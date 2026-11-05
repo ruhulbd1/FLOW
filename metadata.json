@@ -1,0 +1,6 @@
+{
+  "name": "FLOW",
+  "description": "YouTube-style video streaming app with real-time video feed, Shorts, Music, Subscriptions, and Library.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
