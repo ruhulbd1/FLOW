@@ -9,6 +9,7 @@ import com.example.data.model.Comment
 import com.example.data.model.Playlist
 import com.example.data.model.VideoItem
 import com.example.data.repository.VideoRepository
+import com.example.service.MediaPlaybackManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -80,6 +81,41 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         loadInitialData()
+
+        // Sync playback state with MediaPlaybackManager
+        viewModelScope.launch {
+            MediaPlaybackManager.isPlaying.collect { playing ->
+                if (_uiState.value.isPlaying != playing) {
+                    _uiState.value = _uiState.value.copy(isPlaying = playing)
+                }
+            }
+        }
+
+        MediaPlaybackManager.onPlayPauseRequested = {
+            togglePlayPause()
+        }
+
+        MediaPlaybackManager.onNextRequested = {
+            val current = _uiState.value.activeVideo
+            val list = _uiState.value.videos
+            if (current != null && list.isNotEmpty()) {
+                val idx = list.indexOfFirst { it.id == current.id }
+                if (idx >= 0 && idx < list.size - 1) {
+                    openVideo(list[idx + 1], expanded = _uiState.value.isPlayerExpanded)
+                }
+            }
+        }
+
+        MediaPlaybackManager.onPrevRequested = {
+            val current = _uiState.value.activeVideo
+            val list = _uiState.value.videos
+            if (current != null && list.isNotEmpty()) {
+                val idx = list.indexOfFirst { it.id == current.id }
+                if (idx > 0) {
+                    openVideo(list[idx - 1], expanded = _uiState.value.isPlayerExpanded)
+                }
+            }
+        }
 
         // Observe repository DataStore flows for real-time reactivity
         viewModelScope.launch {
@@ -225,6 +261,7 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
                 searchQuery = _uiState.value.searchQuery,
                 selectedChannelFilter = _uiState.value.selectedChannelFilter
             ).collect { list ->
+                MediaPlaybackManager.setPlaylist(list)
                 _uiState.value = _uiState.value.copy(
                     videos = list,
                     isLoading = false
@@ -296,6 +333,14 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
             videoComments = currentComments
         )
 
+        // Launch foreground media playback service for background audio & lock screen control
+        MediaPlaybackManager.startPlayback(
+            context = getApplication(),
+            video = video,
+            isPlaying = true,
+            playlist = _uiState.value.videos
+        )
+
         // Add to history only if saveWatchHistory is enabled
         viewModelScope.launch {
             repository.addToHistory(video.id)
@@ -303,7 +348,9 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun togglePlayPause() {
-        _uiState.value = _uiState.value.copy(isPlaying = !_uiState.value.isPlaying)
+        val nextState = !_uiState.value.isPlaying
+        _uiState.value = _uiState.value.copy(isPlaying = nextState)
+        MediaPlaybackManager.togglePlayPause(getApplication())
     }
 
     fun collapsePlayer() {
@@ -320,6 +367,7 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
             isPlaying = false,
             isPlayerExpanded = false
         )
+        MediaPlaybackManager.stop(getApplication())
     }
 
     fun nextShort() {
@@ -332,6 +380,7 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
                 activeVideo = nextShort,
                 isPlaying = true
             )
+            MediaPlaybackManager.startPlayback(getApplication(), nextShort, isPlaying = true, playlist = _uiState.value.shorts)
         }
     }
 
@@ -345,6 +394,7 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
                 activeVideo = prevShort,
                 isPlaying = true
             )
+            MediaPlaybackManager.startPlayback(getApplication(), prevShort, isPlaying = true, playlist = _uiState.value.shorts)
         }
     }
 

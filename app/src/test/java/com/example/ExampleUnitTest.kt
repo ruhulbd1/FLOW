@@ -148,4 +148,44 @@ class ExampleUnitTest {
     assertEquals(3, updatedFeed.size)
     assertEquals("v_new_1", updatedFeed[0].id) // Appears right at the top!
   }
+
+  @Test
+  fun testDurationToMillisecondsParsing() {
+    fun parseDuration(duration: String?): Long {
+      if (duration.isNullOrBlank()) return 38 * 60 * 1000L
+      return try {
+        val parts = duration.split(":").map { it.trim().toInt() }
+        when (parts.size) {
+          2 -> (parts[0] * 60 + parts[1]) * 1000L
+          3 -> (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000L
+          else -> 38 * 60 * 1000L
+        }
+      } catch (e: Exception) {
+        38 * 60 * 1000L
+      }
+    }
+
+    assertEquals(214000L, parseDuration("3:34")) // 3*60 + 34 = 214s -> 214000ms
+    assertEquals(2339000L, parseDuration("38:59")) // 38*60 + 59 = 2339s -> 2339000ms
+    assertEquals(3725000L, parseDuration("1:02:05")) // 1*3600 + 2*60 + 5 = 3725s -> 3725000ms
+    assertEquals(38 * 60 * 1000L, parseDuration("")) // Fallback default
+  }
+
+  @Test
+  fun testPlaylistNavigationIndices() {
+    val playlist = listOf("vid_1", "vid_2", "vid_3", "vid_4")
+    val current = "vid_2"
+    val idx = playlist.indexOf(current)
+    assertEquals(1, idx)
+
+    // Next track index
+    val nextIdx = idx + 1
+    assertTrue(nextIdx < playlist.size)
+    assertEquals("vid_3", playlist[nextIdx])
+
+    // Previous track index
+    val prevIdx = idx - 1
+    assertTrue(prevIdx >= 0)
+    assertEquals("vid_1", playlist[prevIdx])
+  }
 }
