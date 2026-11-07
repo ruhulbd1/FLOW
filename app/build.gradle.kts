@@ -62,6 +62,13 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    
+    // Material Icons Extended (আইকন সংক্রান্ত আনরিসলভড এরর দূর করার জন্য)
+    implementation("androidx.compose.material:material-icons-extended:1.6.8")
+    
+    // Coil Compose (AsyncImage সংক্রান্ত এরর দূর করার জন্য)
+    implementation("io.coil-kt:coil-compose:2.6.0")
+
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
