@@ -6,6 +6,7 @@ workflows:
     scripts:
       - name: Build Android Release APK
         script: |
+          chmod +x ./gradlew || find . -name "gradlew" -exec chmod +x {} \;
           ./gradlew assembleRelease
     artifacts:
       - app/build/outputs/apk/**/*.apk
