@@ -12,7 +12,6 @@ workflows:
             ./gradlew wrapper --gradle-version 9.3.1
           fi
           chmod +x gradlew
-          # কি-স্টোর এরর এড়ানোর জন্য রিলিজ সাইনিং বাদ দিয়ে সরাসরি এপিকে বিল্ড করা
           ./gradlew assembleRelease -x signReleaseBundle -x signReleaseApk || ./gradlew assembleRelease
     artifacts:
       - app/build/outputs/apk/**/*.apk
