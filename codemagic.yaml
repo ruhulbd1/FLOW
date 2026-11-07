@@ -4,7 +4,7 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m1
     scripts:
-      - name: Build Unsigned Release APK
+      - name: Build APK without Keystore Issue
         script: |
           if [ ! -f "./gradlew" ]; then
             gradle wrapper --gradle-version 9.3.1
@@ -12,6 +12,7 @@ workflows:
             ./gradlew wrapper --gradle-version 9.3.1
           fi
           chmod +x gradlew
-          ./gradlew assembleRelease -x signReleaseBundle -x signReleaseApk || ./gradlew assembleRelease
+          # কি-স্টোর চেকিং এড়িয়ে সরাসরি এপিকে বিল্ড করার সঠিক কমান্ড
+          ./gradlew assembleDebug
     artifacts:
       - app/build/outputs/apk/**/*.apk
