@@ -4,10 +4,13 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m1
     scripts:
-      - name: Generate Gradle Wrapper and Build APK
+      - name: Fix Gradle Version and Build APK
         script: |
+          # গ্রেডল ওয়ারপার ভার্সন প্রজেক্টের রিকোয়ারমেন্ট অনুযায়ী 8.3 বা সামঞ্জস্যপূর্ণ ভার্সনে সেট করা
           if [ ! -f "./gradlew" ]; then
-            gradle wrapper
+            gradle wrapper --gradle-version 8.3
+          else
+            ./gradlew wrapper --gradle-version 8.3
           fi
           chmod +x gradlew
           ./gradlew assembleRelease
