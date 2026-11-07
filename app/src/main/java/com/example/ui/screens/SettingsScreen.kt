@@ -165,12 +165,13 @@ fun SettingsScreen(
     var showStorageMenu by remember { mutableStateOf(false) }
 
     val presetChannels = listOf(
-        Pair("c_deepto", "Deepto Natok"),
-        Pair("c_naf", "NAF Ent"),
-        Pair("c_rtv", "Rtv Drama"),
-        Pair("c_cmv", "CMV Natok"),
-        Pair("c_dhruba", "Dhruba TV"),
-        Pair("c_csb", "Coke Studio Bangla")
+        Pair("UCVlUfN0sAILHcqgtWSxEPRg", "Deepto Natok"),
+        Pair("UCaE9aMdlRomFYL4LkGhC1FQ", "NAF Ent"),
+        Pair("UC_x5XG1OV2P6uZZ5FSM9Ttw", "Google Developers"),
+        Pair("UC9FHe3sU-2xmFyEOOHWGbxA", "CMV Natok"),
+        Pair("UCIB65_E_7XEScU2NB135wDw", "Coke Studio Bangla"),
+        Pair("UCBJycsmduvYEL83R_U4JriQ", "MKBHD"),
+        Pair("@AndroidDevelopers", "Android Devs")
     )
 
     // Helper for real-time settings filtering

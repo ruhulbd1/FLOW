@@ -1,21 +1,39 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Project specific ProGuard / R8 rules for FLOW Android app
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Preserve Data Models, Entities, and DTOs
+-keep class com.example.data.model.** { *; }
+-keepclassmembers class com.example.data.model.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Preserve Moshi JSON serialization and Codegen
+-keep class com.squareup.moshi.** { *; }
+-keepclassmembers class * {
+    @com.squareup.moshi.Json <fields>;
+}
+-keep @com.squareup.moshi.JsonClass class * { *; }
+-keepclassmembers @com.squareup.moshi.JsonClass class * { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Preserve Retrofit and OkHttp
+-keep class retrofit2.** { *; }
+-keepclasseswithmembers class * {
+    @retrofit2.http.* <methods>;
+}
+-keep class okhttp3.** { *; }
+-dontwarn okhttp3.**
+-dontwarn retrofit2.**
+
+# Preserve Coil Image Loading and custom ImageLoaderFactory
+-keep class coil.** { *; }
+-dontwarn coil.**
+-keep class com.example.FlowApplication { *; }
+
+# Preserve Coroutines, Flow, and Lifecycle
+-keepclassmembers class * extends kotlin.coroutines.jvm.internal.ContinuationImpl { *; }
+-keepclassmembers class kotlinx.coroutines.** { *; }
+-dontwarn kotlin.**
+
+# Preserve XmlPullParser for RSS Atom parsing
+-keep class org.xmlpull.v1.** { *; }
+-dontwarn org.xmlpull.v1.**
+
+# Preserve Android Jetpack DataStore Preferences
+-keep class androidx.datastore.** { *; }

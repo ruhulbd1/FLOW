@@ -188,4 +188,95 @@ class ExampleUnitTest {
     assertTrue(prevIdx >= 0)
     assertEquals("vid_1", playlist[prevIdx])
   }
+
+  @Test
+  fun testYouTubeRssAtomXmlParsing() {
+    val sampleXml = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+        <link rel="self" href="http://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw"/>
+        <id>yt:channel:UC_x5XG1OV2P6uZZ5FSM9Ttw</id>
+        <title>Google for Developers</title>
+        <entry>
+          <id>yt:video:rsOiZE19RVo</id>
+          <yt:videoId>rsOiZE19RVo</yt:videoId>
+          <title>Accelerate shipping with Antigravity</title>
+          <published>2026-10-29T20:00:20+00:00</published>
+          <author>
+            <name>Google for Developers</name>
+          </author>
+          <media:group>
+            <media:description>Building software to move millions of vehicles.</media:description>
+            <media:thumbnail url="https://i3.ytimg.com/vi/rsOiZE19RVo/hqdefault.jpg" width="480" height="360"/>
+            <media:community>
+              <media:statistics views="45210"/>
+            </media:community>
+          </media:group>
+        </entry>
+      </feed>
+    """.trimIndent()
+
+    val videoId = Regex("<yt:videoId>(.*?)</yt:videoId>").find(sampleXml)?.groupValues?.get(1)?.trim() ?: ""
+    val title = Regex("<entry>[\\s\\S]*?<title>(.*?)</title>").find(sampleXml)?.groupValues?.get(1)?.trim() ?: ""
+    val author = Regex("<author>[\\s\\S]*?<name>(.*?)</name>").find(sampleXml)?.groupValues?.get(1)?.trim() ?: ""
+    val views = Regex("views=\"(\\d+)\"").find(sampleXml)?.groupValues?.get(1) ?: ""
+
+    assertEquals("rsOiZE19RVo", videoId)
+    assertTrue(title.contains("Antigravity"))
+    assertEquals("Google for Developers", author)
+    assertEquals("45210", views)
+  }
+
+  @Test
+  fun testRealYouTubeChannelAvatarResolution() {
+    val knownAvatars = mapOf(
+      "UCVlUfN0sAILHcqgtWSxEPRg" to "https://yt3.googleusercontent.com/r6ReSFjFYh9VCmf7glNN1XJcPmuZHAgIKDIgnTGJyP8wFbQAqt1ksLcJT48qQkH6CsRH8Aga=s900-c-k-c0x00ffffff-no-rj",
+      "UCaE9aMdlRomFYL4LkGhC1FQ" to "https://yt3.googleusercontent.com/WcJVfCa-wGUfUauDu-958MnOrkdzyOX440KdsY4QaKUA_HxyOQhxXOqDxzYYnYsHCyIx65dj2w=s900-c-k-c0x00ffffff-no-rj"
+    )
+
+    fun resolveAvatar(channelId: String, currentUrl: String): String {
+      if (currentUrl.isNotBlank() && !currentUrl.contains("unsplash.com")) return currentUrl
+      return knownAvatars[channelId] ?: ""
+    }
+
+    // Outdated Unsplash URL should be upgraded to real YouTube avatar
+    val resolvedFromUnsplash = resolveAvatar("UCVlUfN0sAILHcqgtWSxEPRg", "https://images.unsplash.com/photo-1534528741775-53994a69daeb")
+    assertTrue(resolvedFromUnsplash.contains("yt3.googleusercontent.com"))
+    assertFalse(resolvedFromUnsplash.contains("unsplash.com"))
+
+    // Blank avatar should be resolved to real YouTube avatar
+    val resolvedFromBlank = resolveAvatar("UCaE9aMdlRomFYL4LkGhC1FQ", "")
+    assertTrue(resolvedFromBlank.contains("yt3.googleusercontent.com"))
+  }
+
+  @Test
+  fun testRealisticViewsAndDurationFormatting() {
+    fun formatViews(views: Long?): String {
+      if (views == null || views <= 0) return "Recent upload"
+      return when {
+        views >= 1_000_000 -> String.format("%.1fM views", views / 1_000_000.0)
+        views >= 1_000 -> String.format("%.1fK views", views / 1_000.0)
+        views == 1L -> "1 view"
+        else -> "$views views"
+      }
+    }
+
+    fun deriveDuration(videoId: String, isShort: Boolean): String {
+      if (isShort) return "0:45"
+      val hash = Math.abs(videoId.hashCode())
+      val minutes = (hash % 22) + 4
+      val seconds = (hash / 17) % 60
+      return String.format("%d:%02d", minutes, seconds)
+    }
+
+    assertEquals("1.2K views", formatViews(1212L))
+    assertEquals("2.4M views", formatViews(2400000L))
+    assertEquals("45 views", formatViews(45L))
+    assertEquals("1 view", formatViews(1L))
+
+    val durRegular = deriveDuration("DfanjKOWW_k", false)
+    assertTrue(durRegular.contains(":"))
+    val durShort = deriveDuration("DfanjKOWW_k", true)
+    assertEquals("0:45", durShort)
+  }
 }

@@ -632,10 +632,13 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
     fun addChannel(input: String) {
         viewModelScope.launch {
             try {
-                _uiState.value = _uiState.value.copy(isLoading = true)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = true,
+                    userFeedbackMessage = "Resolving '$input' & fetching real YouTube uploads..."
+                )
                 val channel = repository.addChannel(input)
                 _uiState.value = _uiState.value.copy(
-                    userFeedbackMessage = "Added '${channel.name}' to channel list and home feed!",
+                    userFeedbackMessage = "Added '${channel.name}'! Real YouTube videos loaded into your feed.",
                     apiStatusMessage = "Channel '${channel.name}' added"
                 )
                 fetchVideos()

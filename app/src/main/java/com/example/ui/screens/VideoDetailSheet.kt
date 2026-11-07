@@ -73,6 +73,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
+import com.example.data.api.YouTubeRssService
 import com.example.data.model.Comment
 import com.example.data.model.VideoItem
 import com.example.ui.components.VideoCard
@@ -219,14 +222,52 @@ fun VideoDetailSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.weight(1f)
                     ) {
-                        if (video.channelAvatarUrl.isNotBlank()) {
-                            AsyncImage(
-                                model = video.channelAvatarUrl,
+                        val effectiveAvatar = when {
+                            video.channelAvatarUrl.isNotBlank() && !video.channelAvatarUrl.contains("unsplash.com") -> video.channelAvatarUrl.trim()
+                            else -> YouTubeRssService.KNOWN_REAL_AVATARS[video.channelId] ?: ""
+                        }
+                        val hasValidAvatar = effectiveAvatar.isNotBlank() && !effectiveAvatar.contains("unsplash.com")
+                        if (hasValidAvatar) {
+                            SubcomposeAsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(effectiveAvatar)
+                                    .crossfade(true)
+                                    .build(),
                                 contentDescription = video.channelTitle,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .size(42.dp)
-                                    .clip(CircleShape)
+                                    .clip(CircleShape),
+                                loading = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(CircleShape)
+                                            .background(FlowRed),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = video.channelTitle.firstOrNull()?.toString() ?: "F",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                },
+                                error = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(CircleShape)
+                                            .background(FlowRed),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = video.channelTitle.firstOrNull()?.toString() ?: "F",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
                             )
                         } else {
                             Box(

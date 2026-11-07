@@ -64,9 +64,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.example.data.model.Channel
 import com.example.data.model.VideoItem
 import com.example.ui.components.VideoCard
@@ -226,14 +229,28 @@ fun SubscriptionsScreen(
                                 )
                                 .padding(3.dp)
                         ) {
-                            AsyncImage(
-                                model = channel.avatarUrl,
-                                contentDescription = channel.name,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(CircleShape)
-                            )
+                            val hasValidAvatar = channel.avatarUrl.isNotBlank() && !channel.avatarUrl.contains("unsplash.com")
+                            if (hasValidAvatar) {
+                                SubcomposeAsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(channel.avatarUrl.trim())
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = channel.name,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(CircleShape),
+                                    loading = {
+                                        SubscriptionInitialAvatar(channel.name)
+                                    },
+                                    error = {
+                                        SubscriptionInitialAvatar(channel.name)
+                                    }
+                                )
+                            } else {
+                                SubscriptionInitialAvatar(channel.name)
+                            }
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
@@ -544,5 +561,35 @@ fun SubscriptionsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun SubscriptionInitialAvatar(
+    name: String,
+    modifier: Modifier = Modifier
+) {
+    val initial = name.trim().firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "Y"
+    val avatarColors = listOf(
+        Color(0xFFE53935), Color(0xFFD81B60), Color(0xFF8E24AA),
+        Color(0xFF5E35B1), Color(0xFF3949AB), Color(0xFF1E88E5),
+        Color(0xFF00897B), Color(0xFF43A047), Color(0xFFF4511E)
+    )
+    val colorIndex = Math.abs(name.hashCode()) % avatarColors.size
+    val bgColor = avatarColors[colorIndex]
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clip(CircleShape)
+            .background(bgColor),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = initial,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp
+        )
     }
 }

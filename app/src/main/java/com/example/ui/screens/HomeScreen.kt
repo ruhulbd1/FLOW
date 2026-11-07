@@ -48,6 +48,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import com.example.data.model.Channel
 import com.example.data.model.VideoItem
 import com.example.ui.components.VideoCard
@@ -285,13 +287,28 @@ fun HomeScreen(
                             }
                             .testTag("filter_channel_${channel.id}")
                     ) {
-                        Text(
-                            text = displayName,
-                            fontSize = 11.sp,
-                            fontWeight = if (isChannelSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isChannelSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (channel.avatarUrl.isNotBlank() && !channel.avatarUrl.contains("unsplash.com")) {
+                                AsyncImage(
+                                    model = channel.avatarUrl,
+                                    contentDescription = channel.name,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clip(CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                            }
+                            Text(
+                                text = displayName,
+                                fontSize = 11.sp,
+                                fontWeight = if (isChannelSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isChannelSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
 
