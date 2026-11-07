@@ -4,9 +4,12 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m1
     scripts:
-      - name: Build APK with Gradle
+      - name: Setup Gradle 9.3.1 and Build APK
         script: |
-          # বিল্ড মেশিনে সরাসরি গ্রেডল ব্যবহার করে এপিকে বিল্ড করা
-          gradle assembleDebug
+          # গ্রেডল ৯.৩.১ র‍্যাপর নিশ্চিত করা
+          gradle wrapper --gradle-version 9.3.1
+          chmod +x gradlew
+          # জেনারেট হওয়া gradlew দিয়ে ডিবাগ এপিকে বিল্ড করা
+          ./gradlew assembleDebug
     artifacts:
       - app/build/outputs/apk/**/*.apk
