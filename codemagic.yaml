@@ -6,11 +6,6 @@ workflows:
     scripts:
       - name: Build APK Cleanly
         script: |
-          if [ ! -f "./gradlew" ]; then
-            gradle wrapper --gradle-version 9.3.1
-          else
-            ./gradlew wrapper --gradle-version 9.3.1
-          fi
           chmod +x gradlew
           ./gradlew assembleDebug
     artifacts:
