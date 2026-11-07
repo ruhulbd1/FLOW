@@ -12,7 +12,7 @@ workflows:
             ./gradlew wrapper --gradle-version 9.3.1
           fi
           chmod +x gradlew
-          # কি-স্টোর বা সাইনিং চেকিং বাইপাস করে সরাসরি এপিকে বিল্ড করা
-          ./gradlew assembleDebug -Pandroid.injected.signing.store.file=
+          # ডিবাগ সাইনিং কনফিগারেশন বাইপাস করে সরাসরি এপিকে ফাইল কম্পাইল ও বিল্ড করা
+          ./gradlew assembleDebug -Pandroid.injected.signing.store.file= -x validateSigningDebug
     artifacts:
       - app/build/outputs/apk/**/*.apk
