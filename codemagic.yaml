@@ -4,18 +4,12 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m1
     scripts:
-      - name: Find and Build Android Release APK
+      - name: Generate Gradle Wrapper and Build APK
         script: |
-          # রুট হোক বা সাব-ফোল্ডার, gradlew খুঁজে বের করে অটো বিল্ড করবে
-          GRADLEW_PATH=$(find . -name "gradlew" -type f | head -n 1)
-          if [ -z "$GRADLEW_PATH" ]; then
-            echo "Error: gradlew file not found anywhere in the repository!"
-            exit 1
+          if [ ! -f "./gradlew" ]; then
+            gradle wrapper
           fi
-          DIR_PATH=$(dirname "$GRADLEW_PATH")
-          echo "Found gradlew in: $DIR_PATH"
-          cd "$DIR_PATH"
           chmod +x gradlew
           ./gradlew assembleRelease
     artifacts:
-      - "**/build/outputs/apk/**/*.apk"
+      - app/build/outputs/apk/**/*.apk
