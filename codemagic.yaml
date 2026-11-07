@@ -4,9 +4,9 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m1
     scripts:
-      - name: Build APK Cleanly
+      - name: Build APK with Gradle
         script: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          # বিল্ড মেশিনে সরাসরি গ্রেডল ব্যবহার করে এপিকে বিল্ড করা
+          gradle assembleDebug
     artifacts:
       - app/build/outputs/apk/**/*.apk
