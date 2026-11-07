@@ -6,11 +6,11 @@ workflows:
     scripts:
       - name: Fix Gradle Version and Build APK
         script: |
-          # গ্রেডল ওয়ারপার ভার্সন প্রজেক্টের রিকোয়ারমেন্ট অনুযায়ী 8.3 বা সামঞ্জস্যপূর্ণ ভার্সনে সেট করা
+          # প্রজেক্টের রিকোয়ারমেন্ট অনুযায়ী গ্রেডল ভার্সন 9.3.1 সেট করা হলো
           if [ ! -f "./gradlew" ]; then
-            gradle wrapper --gradle-version 8.3
+            gradle wrapper --gradle-version 9.3.1
           else
-            ./gradlew wrapper --gradle-version 8.3
+            ./gradlew wrapper --gradle-version 9.3.1
           fi
           chmod +x gradlew
           ./gradlew assembleRelease
