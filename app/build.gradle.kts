@@ -63,16 +63,20 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     
-    // Material Icons Extended (আইকন সংক্রান্ত আনরিসলভড এরর দূর করার জন্য)
+    // Material Icons Extended & Coil
     implementation("androidx.compose.material:material-icons-extended:1.6.8")
-    
-    // Coil Compose (AsyncImage সংক্রান্ত এরর দূর করার জন্য)
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // Navigation & DataStore
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.datastore.preferences)
+
+    // Networking & Serialization (Gson, Moshi, Retrofit, OkHttp)
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.retrofit2:converter-moshi:2.9.0")
+    implementation("com.squareup.moshi:moshi-kotlin:1.15.0")
+    implementation("com.google.code.gson:gson:2.10.1")
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
     
