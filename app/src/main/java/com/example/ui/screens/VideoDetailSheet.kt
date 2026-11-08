@@ -1,9 +1,15 @@
 package com.example.ui.screens
 
+import android.app.Activity
+import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,10 +22,13 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -109,45 +118,129 @@ fun VideoDetailSheet(
     }
 
     val context = LocalContext.current
+    var isFullscreen by remember { mutableStateOf(false) }
     var isDescriptionExpanded by remember { mutableStateOf(false) }
     var isDisliked by remember { mutableStateOf(false) }
     var newCommentText by remember { mutableStateOf("") }
     var showDownloadDialog by remember { mutableStateOf(false) }
     var selectedQuality by remember { mutableStateOf("720p HD") }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // Player Area with Collapse Button Overlay
+    // Helper to find host Activity
+    fun findActivity(): Activity? {
+        var ctx = context
+        while (ctx is ContextWrapper) {
+            if (ctx is Activity) return ctx
+            ctx = ctx.baseContext
+        }
+        return null
+    }
+
+    val activity = remember(context) { findActivity() }
+
+    // Toggle fullscreen and adjust screen orientation & status/navigation bars
+    fun toggleFullscreen() {
+        val next = !isFullscreen
+        isFullscreen = next
+        activity?.let { act ->
+            val window = act.window
+            val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+            if (next) {
+                act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                insetsController.hide(WindowInsetsCompat.Type.systemBars())
+                insetsController.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                insetsController.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            activity?.let { act ->
+                act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                val window = act.window
+                WindowCompat.getInsetsController(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
+    BackHandler {
+        if (isFullscreen) {
+            toggleFullscreen()
+        } else {
+            onCollapse()
+        }
+    }
+
+    if (isFullscreen) {
+        // Fullscreen mode - player fills entire landscape display without sheet distractions
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
+                .fillMaxSize()
+                .background(Color.Black)
         ) {
             VideoPlayerView(
                 video = video,
                 isPlaying = isPlaying,
-                onTogglePlay = onTogglePlay
+                onTogglePlay = onTogglePlay,
+                isFullscreen = true,
+                onToggleFullscreen = { toggleFullscreen() },
+                modifier = Modifier.fillMaxSize()
             )
 
-            // Collapse to MiniPlayer button in top-left
+            // Exit fullscreen back button on top-left
             IconButton(
-                onClick = onCollapse,
+                onClick = { toggleFullscreen() },
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(8.dp)
-                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                    .testTag("collapse_player_button")
+                    .padding(16.dp)
+                    .background(Color.Black.copy(alpha = 0.65f), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Minimize player",
+                    contentDescription = "Exit Fullscreen",
                     tint = Color.White
                 )
             }
         }
+    } else {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            // Player Area with Collapse Button Overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+            ) {
+                VideoPlayerView(
+                    video = video,
+                    isPlaying = isPlaying,
+                    onTogglePlay = onTogglePlay,
+                    isFullscreen = false,
+                    onToggleFullscreen = { toggleFullscreen() }
+                )
+
+                // Collapse to MiniPlayer button in top-left
+                IconButton(
+                    onClick = onCollapse,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                        .testTag("collapse_player_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Minimize player",
+                        tint = Color.White
+                    )
+                }
+            }
 
         // Scrollable Details, Actions, Comments, and Related Videos
         LazyColumn(
@@ -437,102 +530,137 @@ fun VideoDetailSheet(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Comments Section Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Comments (${comments.size})",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Add comment input box
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = newCommentText,
-                        onValueChange = { newCommentText = it },
-                        placeholder = { Text("Add a comment...", fontSize = 13.sp) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("comment_input_field"),
-                        shape = RoundedCornerShape(20.dp),
-                        singleLine = true
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    IconButton(
-                        onClick = {
-                            if (newCommentText.isNotBlank()) {
-                                onAddComment(video.id, newCommentText)
-                                newCommentText = ""
-                            }
-                        },
-                        modifier = Modifier
-                            .background(FlowRed, CircleShape)
-                            .size(42.dp)
-                            .testTag("submit_comment_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Send,
-                            contentDescription = "Post comment",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-            }
-
-            // Existing Comments List
-            items(comments, key = { it.id }) { comment ->
-                Row(
+                // Bounded Comments Card Container
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.Top
+                        .testTag("comments_container_card"),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ) {
-                    AsyncImage(
-                        model = comment.avatarUrl,
-                        contentDescription = comment.author,
-                        contentScale = ContentScale.Crop,
+                    Column(
                         modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                    )
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            .fillMaxWidth()
+                            .padding(12.dp)
+                    ) {
+                        // Comments Section Header
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
-                                text = comment.author,
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                text = "Comments (${comments.size})",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onBackground
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = comment.timeAgo,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = comment.text,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Add comment input box
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = newCommentText,
+                                onValueChange = { newCommentText = it },
+                                placeholder = { Text("Add a comment...", fontSize = 13.sp) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("comment_input_field"),
+                                shape = RoundedCornerShape(20.dp),
+                                singleLine = true
+                            )
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            IconButton(
+                                onClick = {
+                                    if (newCommentText.isNotBlank()) {
+                                        onAddComment(video.id, newCommentText)
+                                        newCommentText = ""
+                                    }
+                                },
+                                modifier = Modifier
+                                    .background(FlowRed, CircleShape)
+                                    .size(42.dp)
+                                    .testTag("submit_comment_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Send,
+                                    contentDescription = "Post comment",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Render bounded comments inside the card
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 280.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            if (comments.isEmpty()) {
+                                Text(
+                                    text = "No comments yet. Be the first to comment!",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            } else {
+                                comments.forEach { comment ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 6.dp),
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        AsyncImage(
+                                            model = comment.avatarUrl,
+                                            contentDescription = comment.author,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(CircleShape)
+                                        )
+
+                                        Spacer(modifier = Modifier.width(10.dp))
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = comment.author,
+                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                    color = MaterialTheme.colorScheme.onBackground
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = comment.timeAgo,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = comment.text,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onBackground
+                                            )
+                                        }
+                                    }
+                                    HorizontalDivider(
+                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f),
+                                        modifier = Modifier.padding(vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -696,6 +824,7 @@ fun VideoDetailSheet(
                 }
             }
         )
+    }
     }
 }
 

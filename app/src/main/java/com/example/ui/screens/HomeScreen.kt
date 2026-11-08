@@ -65,12 +65,6 @@ fun HomeScreen(
     savedVideoIds: Set<String>,
     unreadNotificationsCount: Int,
     isLoading: Boolean,
-    isAutoSyncEnabled: Boolean = true,
-    isAutoSyncing: Boolean = false,
-    lastSyncTimestamp: String = "Just now",
-    newUploadBannerMessage: String? = null,
-    onDismissNewUploadBanner: () -> Unit = {},
-    onSimulateNewUpload: () -> Unit = {},
     onSelectCategory: (String) -> Unit,
     onSelectChannelFilter: (String?) -> Unit,
     onOpenSearch: () -> Unit,
@@ -327,100 +321,6 @@ fun HomeScreen(
                         color = FlowRed,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                     )
-                }
-            }
-        }
-
-        // Live Auto-Sync Status Indicator Strip
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(7.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isAutoSyncing) Color(0xFF00E676)
-                            else if (isAutoSyncEnabled) Color(0xFF4CAF50)
-                            else Color.Gray
-                        )
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (isAutoSyncing) "Checking for new uploads..."
-                    else if (isAutoSyncEnabled) "Real-time sync active • Checked $lastSyncTimestamp"
-                    else "Real-time sync paused",
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                shape = RoundedCornerShape(6.dp),
-                modifier = Modifier.clickable { onSimulateNewUpload() }
-            ) {
-                Text(
-                    text = "Test New Upload",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = FlowRed,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            }
-        }
-
-        // Real-Time New Upload Banner Notification
-        if (!newUploadBannerMessage.isNullOrBlank()) {
-            Surface(
-                color = FlowRed,
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 4.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Bolt,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = newUploadBannerMessage,
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onDismissNewUploadBanner,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Dismiss",
-                            tint = Color.White,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
                 }
             }
         }

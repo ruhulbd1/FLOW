@@ -63,28 +63,28 @@ class VideoRepository(
 
         val DEFAULT_CHANNELS = listOf(
             Channel(
+                id = "UC7VrN38YkMmdr1hFrdaICAA", // Official Dhruba TV
+                name = "Dhruba TV",
+                avatarUrl = "https://yt3.googleusercontent.com/ytc/AIdro_m9_8l8Q9nI_b2rZ8G8rP0N_K4o1_L3=s900-c-k-c0x00ffffff-no-rj",
+                subscribers = "5.6M subscribers",
+                verified = true,
+                isSubscribed = true,
+                isEnabledInFeed = true
+            ),
+            Channel(
+                id = "UCIB65_E_7XEScU2NB135wDw", // Official Coke Studio Bangla
+                name = "Coke Studio Bangla",
+                avatarUrl = "https://yt3.googleusercontent.com/nrwXuQgXdOlZUJQYyCJMK_K1F3Um7yT_qjC_YDrIF_1B9HCSn8JF9ygN9cpDNpThxxHfa8Z2ZDU=s900-c-k-c0x00ffffff-no-rj",
+                subscribers = "3.9M subscribers",
+                verified = true,
+                isSubscribed = true,
+                isEnabledInFeed = true
+            ),
+            Channel(
                 id = "UCVlUfN0sAILHcqgtWSxEPRg", // Official Deepto Natok
                 name = "Deepto Natok",
                 avatarUrl = "https://yt3.googleusercontent.com/r6ReSFjFYh9VCmf7glNN1XJcPmuZHAgIKDIgnTGJyP8wFbQAqt1ksLcJT48qQkH6CsRH8Aga=s900-c-k-c0x00ffffff-no-rj",
                 subscribers = "4.2M subscribers",
-                verified = true,
-                isSubscribed = true,
-                isEnabledInFeed = true
-            ),
-            Channel(
-                id = "UCaE9aMdlRomFYL4LkGhC1FQ", // Official NAF Entertainment
-                name = "NAF Entertainment",
-                avatarUrl = "https://yt3.googleusercontent.com/WcJVfCa-wGUfUauDu-958MnOrkdzyOX440KdsY4QaKUA_HxyOQhxXOqDxzYYnYsHCyIx65dj2w=s900-c-k-c0x00ffffff-no-rj",
-                subscribers = "2.8M subscribers",
-                verified = true,
-                isSubscribed = true,
-                isEnabledInFeed = true
-            ),
-            Channel(
-                id = "UC_x5XG1OV2P6uZZ5FSM9Ttw", // Official Google for Developers
-                name = "Google for Developers",
-                avatarUrl = "https://yt3.googleusercontent.com/r99eRlOesQkJe7pOzDY4JazAlhidoVp-0syxBnYjfeHdmUXGa5zOxcozaxKF2oPHg3RkglecZQ=s900-c-k-c0x00ffffff-no-rj",
-                subscribers = "2.4M subscribers",
                 verified = true,
                 isSubscribed = true,
                 isEnabledInFeed = true
@@ -99,13 +99,31 @@ class VideoRepository(
                 isEnabledInFeed = true
             ),
             Channel(
-                id = "UCIB65_E_7XEScU2NB135wDw", // Official Coke Studio Bangla
-                name = "Coke Studio Bangla",
-                avatarUrl = "https://yt3.googleusercontent.com/nrwXuQgXdOlZUJQYyCJMK_K1F3Um7yT_qjC_YDrIF_1B9HCSn8JF9ygN9cpDNpThxxHfa8Z2ZDU=s900-c-k-c0x00ffffff-no-rj",
-                subscribers = "3.9M subscribers",
+                id = "UCaE9aMdlRomFYL4LkGhC1FQ", // Official NAF Entertainment
+                name = "NAF Entertainment",
+                avatarUrl = "https://yt3.googleusercontent.com/WcJVfCa-wGUfUauDu-958MnOrkdzyOX440KdsY4QaKUA_HxyOQhxXOqDxzYYnYsHCyIx65dj2w=s900-c-k-c0x00ffffff-no-rj",
+                subscribers = "2.8M subscribers",
                 verified = true,
-                isSubscribed = false,
-                isEnabledInFeed = false
+                isSubscribed = true,
+                isEnabledInFeed = true
+            ),
+            Channel(
+                id = "UC2PvBto6gvSLVub6CdwaivA", // Official Rtv Drama
+                name = "Rtv Drama",
+                avatarUrl = "https://yt3.googleusercontent.com/r6ReSFjFYh9VCmf7glNN1XJcPmuZHAgIKDIgnTGJyP8wFbQAqt1ksLcJT48qQkH6CsRH8Aga=s900-c-k-c0x00ffffff-no-rj",
+                subscribers = "8.4M subscribers",
+                verified = true,
+                isSubscribed = true,
+                isEnabledInFeed = true
+            ),
+            Channel(
+                id = "UC_x5XG1OV2P6uZZ5FSM9Ttw", // Official Google for Developers
+                name = "Google for Developers",
+                avatarUrl = "https://yt3.googleusercontent.com/r99eRlOesQkJe7pOzDY4JazAlhidoVp-0syxBnYjfeHdmUXGa5zOxcozaxKF2oPHg3RkglecZQ=s900-c-k-c0x00ffffff-no-rj",
+                subscribers = "2.4M subscribers",
+                verified = true,
+                isSubscribed = true,
+                isEnabledInFeed = true
             ),
             Channel(
                 id = "UCBJycsmduvYEL83R_U4JriQ", // Official Marques Brownlee (MKBHD)
@@ -125,9 +143,9 @@ class VideoRepository(
                 "c_deepto" -> "UCVlUfN0sAILHcqgtWSxEPRg"
                 "c_naf" -> "UCaE9aMdlRomFYL4LkGhC1FQ"
                 "c_cmv" -> "UC9FHe3sU-2xmFyEOOHWGbxA"
-                "c_csb" -> "UCIB65_E_7XEScU2NB135wDw"
-                "c_rtv" -> "UCVlUfN0sAILHcqgtWSxEPRg"
-                "c_dhruba" -> "UC9FHe3sU-2xmFyEOOHWGbxA"
+                "c_csb", "c_coke_studio" -> "UCIB65_E_7XEScU2NB135wDw"
+                "c_rtv", "rtvdrama", "@rtvdrama" -> "UC2PvBto6gvSLVub6CdwaivA"
+                "c_dhruba", "dhrubatv", "@dhrubatv" -> "UC7VrN38YkMmdr1hFrdaICAA"
                 else -> id
             }
         }
@@ -147,22 +165,21 @@ class VideoRepository(
         val json = preferences[KEY_CHANNELS_JSON]
         val rawChannels = if (!json.isNullOrBlank()) {
             try {
-                channelsMoshiAdapter.fromJson(json) ?: DEFAULT_CHANNELS
+                val parsed = channelsMoshiAdapter.fromJson(json) ?: DEFAULT_CHANNELS
+                // Ensure default preset channels (Dhruba TV, Coke Studio Bangla, Deepto, CMV, etc.) are present
+                val existingIds = parsed.map { it.id }.toSet()
+                val merged = parsed.toMutableList()
+                DEFAULT_CHANNELS.forEach { def ->
+                    if (!existingIds.contains(def.id)) {
+                        merged.add(def)
+                    }
+                }
+                merged
             } catch (e: Exception) {
                 DEFAULT_CHANNELS
             }
         } else {
-            // Check legacy CSV if present
-            val csv = preferences[KEY_CHANNEL_IDS]
-            if (!csv.isNullOrBlank()) {
-                val ids = csv.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                DEFAULT_CHANNELS.map { ch ->
-                    if (ids.contains(ch.id)) ch.copy(isEnabledInFeed = true, isSubscribed = true)
-                    else ch.copy(isEnabledInFeed = false)
-                }
-            } else {
-                DEFAULT_CHANNELS
-            }
+            DEFAULT_CHANNELS
         }
 
         // Proactively sanitize and upgrade any legacy Unsplash or blank avatars to real YouTube avatars
@@ -172,6 +189,35 @@ class VideoRepository(
                 if (realAvatar.isNotBlank()) channel.copy(avatarUrl = realAvatar) else channel
             } else {
                 channel
+            }
+        }
+    }
+
+    suspend fun initializeDefaultChannelsIfFirstLaunch() {
+        context.dataStore.edit { preferences ->
+            val json = preferences[KEY_CHANNELS_JSON]
+            if (json.isNullOrBlank()) {
+                preferences[KEY_CHANNELS_JSON] = channelsMoshiAdapter.toJson(DEFAULT_CHANNELS)
+                preferences[KEY_CHANNEL_IDS] = DEFAULT_CHANNELS.filter { it.isEnabledInFeed }.map { it.id }.joinToString(",")
+            } else {
+                try {
+                    val existing = channelsMoshiAdapter.fromJson(json)?.toMutableList() ?: mutableListOf()
+                    val existingIds = existing.map { it.id }.toSet()
+                    var changed = false
+                    DEFAULT_CHANNELS.forEach { def ->
+                        if (!existingIds.contains(def.id)) {
+                            existing.add(def)
+                            changed = true
+                        }
+                    }
+                    if (changed) {
+                        preferences[KEY_CHANNELS_JSON] = channelsMoshiAdapter.toJson(existing)
+                        preferences[KEY_CHANNEL_IDS] = existing.filter { it.isEnabledInFeed }.map { it.id }.joinToString(",")
+                    }
+                } catch (e: Exception) {
+                    preferences[KEY_CHANNELS_JSON] = channelsMoshiAdapter.toJson(DEFAULT_CHANNELS)
+                    preferences[KEY_CHANNEL_IDS] = DEFAULT_CHANNELS.filter { it.isEnabledInFeed }.map { it.id }.joinToString(",")
+                }
             }
         }
     }
@@ -632,7 +678,7 @@ class VideoRepository(
                                     channelId = channelParam,
                                     query = queryParam,
                                     order = "date",
-                                    maxResults = 10
+                                    maxResults = 50
                                 )
 
                                 response.items?.mapNotNull { item ->

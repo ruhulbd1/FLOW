@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -64,6 +66,8 @@ fun VideoPlayerView(
     video: VideoItem,
     isPlaying: Boolean,
     onTogglePlay: () -> Unit,
+    isFullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var progress by remember(video.id) { mutableFloatStateOf(0.12f) }
@@ -78,13 +82,20 @@ fun VideoPlayerView(
         }
     }
 
-    Box(
-        modifier = modifier
+    val boxModifier = if (isFullscreen) {
+        modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .clickable { showControls = !showControls }
+    } else {
+        modifier
             .fillMaxWidth()
             .aspectRatio(16f / 9f)
             .background(Color.Black)
             .clickable { showControls = !showControls }
-    ) {
+    }
+
+    Box(modifier = boxModifier) {
         // If it's a real YouTube ID (usually 11 chars or from API), load WebView Embed
         if (video.id.length == 11 && !video.id.startsWith("demo")) {
             AndroidView(
@@ -125,6 +136,24 @@ fun VideoPlayerView(
                 },
                 modifier = Modifier.fillMaxSize()
             )
+
+            // Fullscreen toggle overlay button for webview
+            if (onToggleFullscreen != null) {
+                IconButton(
+                    onClick = onToggleFullscreen,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(8.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                        .testTag("fullscreen_toggle_button")
+                ) {
+                    Icon(
+                        imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                        contentDescription = if (isFullscreen) "Exit Fullscreen" else "Enter Fullscreen",
+                        tint = Color.White
+                    )
+                }
+            }
         } else {
             // High fidelity interactive player with cover art and controls
             AsyncImage(
@@ -140,6 +169,29 @@ fun VideoPlayerView(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = if (showControls || !isPlaying) 0.55f else 0.15f))
             )
+
+            // Top right fullscreen button
+            if (onToggleFullscreen != null) {
+                AnimatedVisibility(
+                    visible = showControls || !isPlaying,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                ) {
+                    IconButton(
+                        onClick = onToggleFullscreen,
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                            .testTag("player_fullscreen_button")
+                    ) {
+                        Icon(
+                            imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                            contentDescription = if (isFullscreen) "Exit Fullscreen" else "Enter Fullscreen",
+                            tint = Color.White
+                        )
+                    }
+                }
+            }
 
             // Centered playback controls overlay
             AnimatedVisibility(
@@ -201,7 +253,8 @@ fun VideoPlayerView(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     val currentMin = ((progress * 38).toInt())
                     val currentSec = (((progress * 38 * 60) % 60).toInt())
@@ -211,12 +264,29 @@ fun VideoPlayerView(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
-                    Text(
-                        text = video.duration,
-                        color = Color.White.copy(alpha = 0.8f),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = video.duration,
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        if (onToggleFullscreen != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            IconButton(
+                                onClick = onToggleFullscreen,
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                    contentDescription = if (isFullscreen) "Exit Fullscreen" else "Enter Fullscreen",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
                 }
 
                 LinearProgressIndicator(

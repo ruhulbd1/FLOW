@@ -21,7 +21,8 @@ interface YouTubeApiService {
         @Query("q") query: String? = null,
         @Query("type") type: String = "video",
         @Query("order") order: String = "date",
-        @Query("maxResults") maxResults: Int = 20
+        @Query("maxResults") maxResults: Int = 50,
+        @Query("pageToken") pageToken: String? = null
     ): YouTubeApiResponse
 
     @GET("youtube/v3/channels")

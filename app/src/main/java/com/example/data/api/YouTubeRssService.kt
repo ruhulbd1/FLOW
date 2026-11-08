@@ -54,20 +54,26 @@ class YouTubeRssService(
             "c_cmv" to "https://yt3.googleusercontent.com/ytc/AIdro_ki3dMOtrCmIk9-G0PdRPR4757n6sSXogSDZJ3t_oArrw=s900-c-k-c0x00ffffff-no-rj",
             "UCIB65_E_7XEScU2NB135wDw" to "https://yt3.googleusercontent.com/nrwXuQgXdOlZUJQYyCJMK_K1F3Um7yT_qjC_YDrIF_1B9HCSn8JF9ygN9cpDNpThxxHfa8Z2ZDU=s900-c-k-c0x00ffffff-no-rj",
             "c_csb" to "https://yt3.googleusercontent.com/nrwXuQgXdOlZUJQYyCJMK_K1F3Um7yT_qjC_YDrIF_1B9HCSn8JF9ygN9cpDNpThxxHfa8Z2ZDU=s900-c-k-c0x00ffffff-no-rj",
+            "c_coke_studio" to "https://yt3.googleusercontent.com/nrwXuQgXdOlZUJQYyCJMK_K1F3Um7yT_qjC_YDrIF_1B9HCSn8JF9ygN9cpDNpThxxHfa8Z2ZDU=s900-c-k-c0x00ffffff-no-rj",
+            "UC7VrN38YkMmdr1hFrdaICAA" to "https://yt3.googleusercontent.com/ytc/AIdro_m9_8l8Q9nI_b2rZ8G8rP0N_K4o1_L3=s900-c-k-c0x00ffffff-no-rj",
+            "c_dhruba" to "https://yt3.googleusercontent.com/ytc/AIdro_m9_8l8Q9nI_b2rZ8G8rP0N_K4o1_L3=s900-c-k-c0x00ffffff-no-rj",
+            "dhrubatv" to "https://yt3.googleusercontent.com/ytc/AIdro_m9_8l8Q9nI_b2rZ8G8rP0N_K4o1_L3=s900-c-k-c0x00ffffff-no-rj",
+            "@dhrubatv" to "https://yt3.googleusercontent.com/ytc/AIdro_m9_8l8Q9nI_b2rZ8G8rP0N_K4o1_L3=s900-c-k-c0x00ffffff-no-rj",
+            "UC2PvBto6gvSLVub6CdwaivA" to "https://yt3.googleusercontent.com/r6ReSFjFYh9VCmf7glNN1XJcPmuZHAgIKDIgnTGJyP8wFbQAqt1ksLcJT48qQkH6CsRH8Aga=s900-c-k-c0x00ffffff-no-rj",
+            "c_rtv" to "https://yt3.googleusercontent.com/r6ReSFjFYh9VCmf7glNN1XJcPmuZHAgIKDIgnTGJyP8wFbQAqt1ksLcJT48qQkH6CsRH8Aga=s900-c-k-c0x00ffffff-no-rj",
+            "rtvdrama" to "https://yt3.googleusercontent.com/r6ReSFjFYh9VCmf7glNN1XJcPmuZHAgIKDIgnTGJyP8wFbQAqt1ksLcJT48qQkH6CsRH8Aga=s900-c-k-c0x00ffffff-no-rj",
             "UCBJycsmduvYEL83R_U4JriQ" to "https://yt3.googleusercontent.com/qu4TmIaYUlS41-dJ9gZ7DUR3nilvmB5_11i6OKSdvNnBNiyOusZP1bMN6ICnuxtjFBb6ioKgRQ=s900-c-k-c0x00ffffff-no-rj",
             "mkbhd" to "https://yt3.googleusercontent.com/qu4TmIaYUlS41-dJ9gZ7DUR3nilvmB5_11i6OKSdvNnBNiyOusZP1bMN6ICnuxtjFBb6ioKgRQ=s900-c-k-c0x00ffffff-no-rj",
-            "@mkbhd" to "https://yt3.googleusercontent.com/qu4TmIaYUlS41-dJ9gZ7DUR3nilvmB5_11i6OKSdvNnBNiyOusZP1bMN6ICnuxtjFBb6ioKgRQ=s900-c-k-c0x00ffffff-no-rj",
-            "c_rtv" to "https://yt3.googleusercontent.com/r6ReSFjFYh9VCmf7glNN1XJcPmuZHAgIKDIgnTGJyP8wFbQAqt1ksLcJT48qQkH6CsRH8Aga=s900-c-k-c0x00ffffff-no-rj",
-            "c_dhruba" to "https://yt3.googleusercontent.com/WcJVfCa-wGUfUauDu-958MnOrkdzyOX440KdsY4QaKUA_HxyOQhxXOqDxzYYnYsHCyIx65dj2w=s900-c-k-c0x00ffffff-no-rj"
+            "@mkbhd" to "https://yt3.googleusercontent.com/qu4TmIaYUlS41-dJ9gZ7DUR3nilvmB5_11i6OKSdvNnBNiyOusZP1bMN6ICnuxtjFBb6ioKgRQ=s900-c-k-c0x00ffffff-no-rj"
         )
         fun resolveCanonicalChannelId(id: String): String {
             return when (id) {
                 "c_deepto" -> "UCVlUfN0sAILHcqgtWSxEPRg"
                 "c_naf" -> "UCaE9aMdlRomFYL4LkGhC1FQ"
                 "c_cmv" -> "UC9FHe3sU-2xmFyEOOHWGbxA"
-                "c_csb" -> "UCIB65_E_7XEScU2NB135wDw"
-                "c_rtv" -> "UCVlUfN0sAILHcqgtWSxEPRg"
-                "c_dhruba" -> "UC9FHe3sU-2xmFyEOOHWGbxA"
+                "c_csb", "c_coke_studio" -> "UCIB65_E_7XEScU2NB135wDw"
+                "c_rtv", "rtvdrama", "@rtvdrama" -> "UC2PvBto6gvSLVub6CdwaivA"
+                "c_dhruba", "dhrubatv", "@dhrubatv" -> "UC7VrN38YkMmdr1hFrdaICAA"
                 else -> id
             }
         }
@@ -292,12 +298,51 @@ class YouTubeRssService(
             avatarCache[channelId] = effectiveAvatar
         }
 
-        val xml = fetchFeedXml(channelId) ?: return@withContext emptyList()
-        return@withContext parseFeedXml(xml, channelId, effectiveAvatar)
+        val channelXml = fetchFeedXml(channelId)
+        val items = mutableListOf<VideoItem>()
+        if (channelXml != null) {
+            items.addAll(parseFeedXml(channelXml, channelId, effectiveAvatar))
+        }
+
+        // Also fetch from uploads playlist (UU...) if available, which provides additional video history
+        if (channelId.startsWith("UC") && channelId.length == 24) {
+            val uploadsPlaylistId = "UU" + channelId.substring(2)
+            val playlistXml = fetchPlaylistFeedXml(uploadsPlaylistId)
+            if (playlistXml != null) {
+                val playlistItems = parseFeedXml(playlistXml, channelId, effectiveAvatar)
+                for (pi in playlistItems) {
+                    if (items.none { it.id == pi.id }) {
+                        items.add(pi)
+                    }
+                }
+            }
+        }
+
+        return@withContext items
     }
 
     private fun fetchFeedXml(channelId: String): String? {
         val url = "https://www.youtube.com/feeds/videos.xml?channel_id=$channelId"
+        return try {
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/atom+xml,application/xml,text/xml")
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful) {
+                response.body?.string()
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun fetchPlaylistFeedXml(playlistId: String): String? {
+        val url = "https://www.youtube.com/feeds/videos.xml?playlist_id=$playlistId"
         return try {
             val request = Request.Builder()
                 .url(url)
