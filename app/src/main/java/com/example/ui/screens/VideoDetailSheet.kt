@@ -187,6 +187,8 @@ fun VideoDetailSheet(
                 onTogglePlay = onTogglePlay,
                 isFullscreen = true,
                 onToggleFullscreen = { toggleFullscreen() },
+                currentQuality = selectedQuality,
+                onQualityChange = { selectedQuality = it },
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -222,7 +224,9 @@ fun VideoDetailSheet(
                     isPlaying = isPlaying,
                     onTogglePlay = onTogglePlay,
                     isFullscreen = false,
-                    onToggleFullscreen = { toggleFullscreen() }
+                    onToggleFullscreen = { toggleFullscreen() },
+                    currentQuality = selectedQuality,
+                    onQualityChange = { selectedQuality = it }
                 )
 
                 // Collapse to MiniPlayer button in top-left

@@ -25,6 +25,22 @@ interface YouTubeApiService {
         @Query("pageToken") pageToken: String? = null
     ): YouTubeApiResponse
 
+    @GET("youtube/v3/playlistItems")
+    suspend fun getPlaylistItems(
+        @Query("key") apiKey: String,
+        @Query("part") part: String = "snippet,contentDetails",
+        @Query("playlistId") playlistId: String,
+        @Query("maxResults") maxResults: Int = 50,
+        @Query("pageToken") pageToken: String? = null
+    ): com.example.data.model.YouTubePlaylistItemsResponse
+
+    @GET("youtube/v3/videos")
+    suspend fun getVideoDetails(
+        @Query("key") apiKey: String,
+        @Query("part") part: String = "snippet,contentDetails,statistics",
+        @Query("id") id: String
+    ): com.example.data.model.YouTubeVideoDetailsResponse
+
     @GET("youtube/v3/channels")
     suspend fun getChannels(
         @Query("key") apiKey: String,

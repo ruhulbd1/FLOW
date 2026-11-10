@@ -21,6 +21,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -157,8 +159,157 @@ class VideoRepository(
         moshi.adapter<List<Channel>>(type)
     }
 
+    // Dynamic shorts repository state: collects any shorts found in channel feeds and routes them to Shorts tab
+    private val _dynamicShorts = MutableStateFlow<List<VideoItem>>(emptyList())
+    val shortsFlow: Flow<List<VideoItem>> = _dynamicShorts.map { dynamic ->
+        (dynamic + getCuratedShorts()).distinctBy { it.id }
+    }
+
+    fun registerShorts(newShorts: List<VideoItem>) {
+        if (newShorts.isEmpty()) return
+        val current = _dynamicShorts.value.toMutableList()
+        for (item in newShorts) {
+            val normalized = item.copy(isShort = true, category = "Shorts")
+            val existingIdx = current.indexOfFirst { it.id == normalized.id }
+            if (existingIdx >= 0) {
+                current[existingIdx] = normalized
+            } else {
+                current.add(0, normalized)
+            }
+        }
+        _dynamicShorts.value = current
+    }
+
+    /**
+     * Robust duration parser: handles ISO-8601 strings (e.g. 'PT45S', 'PT52S', 'PT1M', 'PT1M30S', '45S', 'PT0M45S')
+     * and clock formats ('0:45', '00:52', '1:00', '38:59', '1:12:30', '45') returning total seconds.
+     */
+    fun parseDurationSeconds(duration: String?): Int {
+        if (duration.isNullOrBlank()) return 180
+        val clean = duration.trim().uppercase()
+
+        // 1. ISO-8601 duration handling (e.g. "PT45S", "PT1M", "PT1M30S", "PT52S", "45S", "0M45S")
+        if (clean.contains("P") || clean.contains("T") || clean.endsWith("S") || clean.contains("M")) {
+            try {
+                var hours = 0
+                var minutes = 0
+                var seconds = 0
+                var currentNum = ""
+
+                val payload = clean.removePrefix("P").removePrefix("T")
+                for (ch in payload) {
+                    if (ch.isDigit()) {
+                        currentNum += ch
+                    } else {
+                        val value = currentNum.toIntOrNull() ?: 0
+                        currentNum = ""
+                        when (ch) {
+                            'H' -> hours = value
+                            'M' -> minutes = value
+                            'S' -> seconds = value
+                        }
+                    }
+                }
+                val total = (hours * 3600) + (minutes * 60) + seconds
+                if (total > 0 || clean == "PT0S" || clean == "0S") {
+                    return total
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 2. Standard clock format handling (e.g. "0:45", "00:52", "1:00", "38:59", "1:12:30", "45")
+        try {
+            val parts = clean.split(":").map { segment ->
+                segment.filter { it.isDigit() }.toIntOrNull() ?: 0
+            }
+            return when (parts.size) {
+                1 -> parts[0] // e.g. "45" or "52"
+                2 -> (parts[0] * 60) + parts[1] // "0:45" -> 45, "1:00" -> 60, "38:59" -> 2339
+                3 -> (parts[0] * 3600) + (parts[1] * 60) + parts[2] // "1:12:30"
+                else -> 180
+            }
+        } catch (_: Exception) {
+            return 180
+        }
+    }
+
+    /**
+     * Converts ISO-8601 duration string like 'PT1M30S' or 'PT45S' to user-facing '1:30' or '0:45'.
+     */
+    fun parseIsoDurationToDisplay(isoDuration: String?): String {
+        if (isoDuration.isNullOrBlank()) return "15:20"
+        return try {
+            val totalSec = parseDurationSeconds(isoDuration)
+            val hours = totalSec / 3600
+            val minutes = (totalSec % 3600) / 60
+            val seconds = totalSec % 60
+            if (hours > 0) {
+                String.format("%d:%02d:%02d", hours, minutes, seconds)
+            } else {
+                String.format("%d:%02d", minutes, seconds)
+            }
+        } catch (_: Exception) {
+            "15:20"
+        }
+    }
+
+    /**
+     * Robust Short Video Detection:
+     * - video.isShort == true or category is "Shorts"
+     * - ID indicator (e.g. starts with "short")
+     * - Title or description contains #shorts or #Short / #short (case-insensitive)
+     * - video.duration contains "S" (ISO 8601 duration like PT45S, 45S without hours)
+     * - Parsed total seconds <= 60 (covers "0:45", "0:52", "00:58", "1:00", "PT45S", etc.)
+     */
+    fun isShortVideo(video: VideoItem): Boolean {
+        // 1. Explicit short flag or Shorts category
+        if (video.isShort) return true
+        if (video.category.equals("Shorts", ignoreCase = true)) return true
+
+        // 2. ID indicator
+        if (video.id.startsWith("short", ignoreCase = true)) return true
+
+        // 3. Title or Description hashtags (#shorts, #Shorts, #short, #Short)
+        val titleLower = video.title.lowercase()
+        val descLower = video.description.lowercase()
+        if (titleLower.contains("#shorts") || titleLower.contains("#short")) return true
+        if (descLower.contains("#shorts") || descLower.contains("#short")) return true
+
+        // 4. Check ISO 8601 duration containing "S" without hours (e.g. "PT45S", "PT52S", "45S")
+        val durUpper = video.duration.trim().uppercase()
+        if (durUpper.contains("S") && !durUpper.contains("H")) {
+            // Pure seconds without "M" is always under 60 seconds
+            if (!durUpper.contains("M")) {
+                return true
+            }
+        }
+
+        // 5. Parsed total duration in seconds <= 60 (covers "0:45", "0:52", "00:58", "1:00", etc.)
+        val durationSec = parseDurationSeconds(video.duration)
+        if (durationSec in 1..60) {
+            return true
+        }
+
+        return false
+    }
+
+    private fun getBuildConfigApiKey(): String {
+        return try {
+            val field = Class.forName("com.example.BuildConfig").getField("YOUTUBE_API_KEY")
+            val value = field.get(null) as? String
+            if (!value.isNullOrBlank() && value != "YOUR_YOUTUBE_API_KEY") value else ""
+        } catch (_: Throwable) {
+            ""
+        }
+    }
+
     val apiKeyFlow: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[KEY_YOUTUBE_API_KEY] ?: ""
+        val userKey = preferences[KEY_YOUTUBE_API_KEY]?.trim() ?: ""
+        if (userKey.isNotBlank() && userKey != "YOUR_YOUTUBE_API_KEY") {
+            userKey
+        } else {
+            getBuildConfigApiKey()
+        }
     }
 
     val channelsFlow: Flow<List<Channel>> = context.dataStore.data.map { preferences ->
@@ -653,7 +804,11 @@ class VideoRepository(
         }
         if (cachedList.isNotEmpty()) {
             cachedList.sortByDescending { it.publishedAtIso.ifEmpty { it.publishedAt } }
-            emit(applyVideoFilters(cachedList.distinctBy { it.id }, blockedTopics, categoryFilter, searchQuery))
+            val (cachedHome, cachedShorts) = cachedList.distinctBy { it.id }.partition { !isShortVideo(it) }
+            if (cachedShorts.isNotEmpty()) {
+                registerShorts(cachedShorts)
+            }
+            emit(applyVideoFilters(cachedHome, blockedTopics, categoryFilter, searchQuery))
         }
 
         // 3. Fetch dynamically from YouTube RSS feed and YouTube Data API in parallel
@@ -672,47 +827,135 @@ class VideoRepository(
                                 else null
 
                                 val channelParam = if (canonicalId.startsWith("UC")) canonicalId else null
+                                val fetchedApiVideos = mutableListOf<VideoItem>()
 
-                                val response = apiService.searchVideos(
-                                    apiKey = apiKey,
-                                    channelId = channelParam,
-                                    query = queryParam,
-                                    order = "date",
-                                    maxResults = 50
-                                )
-
-                                response.items?.mapNotNull { item ->
-                                    val videoId = item.id?.videoId
-                                    if (!videoId.isNullOrBlank()) {
-                                        val snippet = item.snippet
-                                        val publishedDate = formatPublishedTime(snippet?.publishedAt)
-                                        val channelTitle = snippet?.channelTitle ?: channel.name
-                                        val channelAvatar = if (channel.avatarUrl.isNotBlank() && !channel.avatarUrl.contains("unsplash.com")) {
-                                            channel.avatarUrl
-                                        } else {
-                                            rssService.getKnownRealAvatar(canonicalId)
-                                        }
-                                        val realisticViews = rssService.formatViews((Math.abs(videoId.hashCode()) % 850L + 15) * 1000L)
-                                        val realisticDuration = String.format("%d:%02d", (Math.abs(videoId.hashCode()) % 22) + 4, (Math.abs(videoId.hashCode()) / 17) % 60)
-                                        VideoItem(
-                                            id = videoId,
-                                            title = snippet?.title?.replace("&quot;", "\"")?.replace("&#39;", "'")?.replace("&amp;", "&") ?: "YouTube Video",
-                                            description = snippet?.description ?: "",
-                                            channelTitle = channelTitle,
-                                            channelId = snippet?.channelId ?: canonicalId,
-                                            channelAvatarUrl = channelAvatar,
-                                            thumbnailUrl = snippet?.thumbnails?.high?.url
-                                                ?: snippet?.thumbnails?.medium?.url
-                                                ?: "https://i.ytimg.com/vi/$videoId/hq720.jpg",
-                                            publishedAt = publishedDate,
-                                            publishedAtIso = snippet?.publishedAt ?: "",
-                                            viewCount = realisticViews,
-                                            duration = realisticDuration,
-                                            category = categoryFilter,
-                                            streamId = videoId
+                                // A1. Low-quota path: use channel uploads playlist (UU...) which costs only 1 quota point
+                                if (canonicalId.startsWith("UC") && canonicalId.length == 24 && queryParam == null) {
+                                    val uploadsPlaylistId = "UU" + canonicalId.substring(2)
+                                    try {
+                                        val playlistResp = apiService.getPlaylistItems(
+                                            apiKey = apiKey,
+                                            playlistId = uploadsPlaylistId,
+                                            maxResults = 50
                                         )
+                                        val videoIds = playlistResp.items?.mapNotNull { it.contentDetails?.videoId } ?: emptyList()
+                                        if (videoIds.isNotEmpty()) {
+                                            val detailsResp = try {
+                                                apiService.getVideoDetails(apiKey = apiKey, id = videoIds.take(50).joinToString(","))
+                                            } catch (_: Exception) { null }
+
+                                            val detailsMap = detailsResp?.items?.associateBy { it.id ?: "" } ?: emptyMap()
+
+                                            playlistResp.items?.forEach { item ->
+                                                val vid = item.contentDetails?.videoId ?: ""
+                                                val snippet = item.snippet
+                                                if (vid.isNotBlank() && snippet != null) {
+                                                    val detail = detailsMap[vid]
+                                                    val rawDuration = detail?.contentDetails?.duration ?: ""
+                                                    val viewCountRaw = detail?.statistics?.viewCount?.toLongOrNull()
+                                                    val formattedViews = if (viewCountRaw != null) rssService.formatViews(viewCountRaw) else rssService.formatViews((Math.abs(vid.hashCode()) % 850L + 15) * 1000L)
+                                                    val displayDuration = if (rawDuration.isNotBlank()) parseIsoDurationToDisplay(rawDuration) else "15:20"
+                                                    val durationSec = parseDurationSeconds(if (rawDuration.isNotBlank()) rawDuration else displayDuration)
+                                                    val isShort = durationSec in 1..60 || snippet.title?.contains("#shorts", ignoreCase = true) == true
+                                                    val channelAvatar = if (channel.avatarUrl.isNotBlank() && !channel.avatarUrl.contains("unsplash.com")) {
+                                                        channel.avatarUrl
+                                                    } else {
+                                                        rssService.getKnownRealAvatar(canonicalId)
+                                                    }
+                                                    val publishedDate = formatPublishedTime(snippet.publishedAt)
+
+                                                    fetchedApiVideos.add(
+                                                        VideoItem(
+                                                            id = vid,
+                                                            title = snippet.title?.replace("&quot;", "\"")?.replace("&#39;", "'")?.replace("&amp;", "&") ?: "YouTube Video",
+                                                            description = snippet.description ?: "",
+                                                            channelTitle = snippet.channelTitle ?: channel.name,
+                                                            channelId = snippet.channelId ?: canonicalId,
+                                                            channelAvatarUrl = channelAvatar,
+                                                            thumbnailUrl = snippet.thumbnails?.high?.url
+                                                                ?: snippet.thumbnails?.medium?.url
+                                                                ?: "https://i.ytimg.com/vi/$vid/hq720.jpg",
+                                                            publishedAt = publishedDate,
+                                                            publishedAtIso = snippet.publishedAt ?: "",
+                                                            viewCount = formattedViews,
+                                                            duration = displayDuration,
+                                                            category = if (isShort) "Shorts" else categoryFilter,
+                                                            isShort = isShort,
+                                                            streamId = vid
+                                                        )
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } catch (_: Exception) {
+                                        // Fallback to search endpoint
+                                    }
+                                }
+
+                                // A2. Search endpoint fallback (or when specific search query is present)
+                                if (fetchedApiVideos.isEmpty()) {
+                                    val response = apiService.searchVideos(
+                                        apiKey = apiKey,
+                                        channelId = channelParam,
+                                        query = queryParam,
+                                        order = "date",
+                                        maxResults = 50
+                                    )
+
+                                    val videoIds = response.items?.mapNotNull { it.id?.videoId } ?: emptyList()
+                                    val detailsResp = if (videoIds.isNotEmpty()) {
+                                        try {
+                                            apiService.getVideoDetails(apiKey = apiKey, id = videoIds.take(50).joinToString(","))
+                                        } catch (_: Exception) { null }
                                     } else null
-                                }?.let { channelVideos.addAll(it) }
+                                    val detailsMap = detailsResp?.items?.associateBy { it.id ?: "" } ?: emptyMap()
+
+                                    response.items?.mapNotNull { item ->
+                                        val videoId = item.id?.videoId
+                                        if (!videoId.isNullOrBlank()) {
+                                            val snippet = item.snippet
+                                            val detail = detailsMap[videoId]
+                                            val rawDuration = detail?.contentDetails?.duration ?: ""
+                                            val viewCountRaw = detail?.statistics?.viewCount?.toLongOrNull()
+                                            val formattedViews = if (viewCountRaw != null) rssService.formatViews(viewCountRaw) else rssService.formatViews((Math.abs(videoId.hashCode()) % 850L + 15) * 1000L)
+                                            val displayDuration = if (rawDuration.isNotBlank()) parseIsoDurationToDisplay(rawDuration) else "15:20"
+                                            val durationSec = parseDurationSeconds(if (rawDuration.isNotBlank()) rawDuration else displayDuration)
+                                            val isShort = durationSec in 1..60 || snippet?.title?.contains("#shorts", ignoreCase = true) == true
+
+                                            val publishedDate = formatPublishedTime(snippet?.publishedAt)
+                                            val channelTitle = snippet?.channelTitle ?: channel.name
+                                            val channelAvatar = if (channel.avatarUrl.isNotBlank() && !channel.avatarUrl.contains("unsplash.com")) {
+                                                channel.avatarUrl
+                                            } else {
+                                                rssService.getKnownRealAvatar(canonicalId)
+                                            }
+
+                                            VideoItem(
+                                                id = videoId,
+                                                title = snippet?.title?.replace("&quot;", "\"")?.replace("&#39;", "'")?.replace("&amp;", "&") ?: "YouTube Video",
+                                                description = snippet?.description ?: "",
+                                                channelTitle = channelTitle,
+                                                channelId = snippet?.channelId ?: canonicalId,
+                                                channelAvatarUrl = channelAvatar,
+                                                thumbnailUrl = snippet?.thumbnails?.high?.url
+                                                    ?: snippet?.thumbnails?.medium?.url
+                                                    ?: "https://i.ytimg.com/vi/$videoId/hq720.jpg",
+                                                publishedAt = publishedDate,
+                                                publishedAtIso = snippet?.publishedAt ?: "",
+                                                viewCount = formattedViews,
+                                                duration = displayDuration,
+                                                category = if (isShort) "Shorts" else categoryFilter,
+                                                isShort = isShort,
+                                                streamId = videoId
+                                            )
+                                        } else null
+                                    }?.let { fetchedApiVideos.addAll(it) }
+                                }
+
+                                if (fetchedApiVideos.isNotEmpty()) {
+                                    channelVideos.addAll(fetchedApiVideos)
+                                    cachedRealVideos[canonicalId] = fetchedApiVideos
+                                }
                             } catch (e: Exception) {
                                 // Fallback to RSS feed
                             }
@@ -767,8 +1010,14 @@ class VideoRepository(
         // 6. Sort chronologically by upload date (most recent first)
         distinctResults.sortByDescending { it.publishedAtIso.ifEmpty { it.publishedAt } }
 
-        // 7. Apply filters (categories, search query, and blocked topics) and emit
-        emit(applyVideoFilters(distinctResults, blockedTopics, categoryFilter, searchQuery))
+        // 7. Route shorts exclusively to Shorts tab and keep Home feed clean
+        val (homeCandidates, detectedShorts) = distinctResults.partition { !isShortVideo(it) }
+        if (detectedShorts.isNotEmpty()) {
+            registerShorts(detectedShorts)
+        }
+
+        // 8. Apply filters (categories, search query, and blocked topics) and emit for the Home feed
+        emit(applyVideoFilters(homeCandidates, blockedTopics, categoryFilter, searchQuery))
     }
 
     private fun applyVideoFilters(
@@ -777,7 +1026,14 @@ class VideoRepository(
         categoryFilter: String,
         searchQuery: String
     ): List<VideoItem> {
-        var filtered = videos
+        // 1. Partition out all Shorts and route them exclusively to the Shorts section/tab
+        val (longVideos, detectedShorts) = videos.partition { video -> !isShortVideo(video) }
+        if (detectedShorts.isNotEmpty()) {
+            registerShorts(detectedShorts)
+        }
+
+        var filtered = longVideos
+
         if (blockedTopics.isNotEmpty()) {
             filtered = filtered.filter { video ->
                 blockedTopics.none { blocked ->
@@ -803,7 +1059,8 @@ class VideoRepository(
             }
         }
 
-        return filtered
+        // Final guarantee: strictly ensure zero short videos in the main Home feed list
+        return filtered.filter { video -> !isShortVideo(video) }
     }
 
     suspend fun checkForNewUploads(knownVideoIds: Set<String>): List<VideoItem> {
@@ -881,7 +1138,12 @@ class VideoRepository(
                     }
                 }
 
-                newVideos.addAll(deferredList.awaitAll().flatten())
+                val allFound = deferredList.awaitAll().flatten()
+                val (longVideos, detectedShorts) = allFound.partition { !isShortVideo(it) }
+                if (detectedShorts.isNotEmpty()) {
+                    registerShorts(detectedShorts)
+                }
+                newVideos.addAll(longVideos)
             }
         } catch (e: Exception) {
             // Return empty if network failed
@@ -952,7 +1214,7 @@ class VideoRepository(
         }
     }
 
-    fun getShorts(): List<VideoItem> {
+    fun getCuratedShorts(): List<VideoItem> {
         return listOf(
             VideoItem(
                 id = "short1",
@@ -1015,6 +1277,10 @@ class VideoRepository(
                 likes = 142000
             )
         )
+    }
+
+    fun getShorts(): List<VideoItem> {
+        return (_dynamicShorts.value + getCuratedShorts()).distinctBy { it.id }
     }
 
     fun getMusicTracks(): List<VideoItem> {

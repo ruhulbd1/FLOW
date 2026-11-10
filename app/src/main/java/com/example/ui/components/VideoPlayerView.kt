@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -68,10 +70,14 @@ fun VideoPlayerView(
     onTogglePlay: () -> Unit,
     isFullscreen: Boolean = false,
     onToggleFullscreen: (() -> Unit)? = null,
+    currentQuality: String = "1080p FHD",
+    onQualityChange: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var progress by remember(video.id) { mutableFloatStateOf(0.12f) }
     var showControls by remember { mutableStateOf(false) }
+    var showQualityMenu by remember { mutableStateOf(false) }
+    var localQuality by remember(currentQuality) { mutableStateOf(if (currentQuality.isNotBlank()) currentQuality else "1080p FHD") }
 
     // Simulate playback timer progress when playing
     LaunchedEffect(isPlaying, video.id) {
@@ -93,6 +99,13 @@ fun VideoPlayerView(
             .aspectRatio(16f / 9f)
             .background(Color.Black)
             .clickable { showControls = !showControls }
+    }
+
+    val qualityLabel = when {
+        localQuality.contains("1080") || localQuality.contains("FHD") -> "FHD"
+        localQuality.contains("720") || localQuality.contains("HD") -> "HD"
+        localQuality.contains("480") || localQuality.contains("360") -> "SD"
+        else -> "HD"
     }
 
     Box(modifier = boxModifier) {
@@ -137,21 +150,68 @@ fun VideoPlayerView(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Fullscreen toggle overlay button for webview
-            if (onToggleFullscreen != null) {
-                IconButton(
-                    onClick = onToggleFullscreen,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(8.dp)
-                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                        .testTag("fullscreen_toggle_button")
-                ) {
-                    Icon(
-                        imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                        contentDescription = if (isFullscreen) "Exit Fullscreen" else "Enter Fullscreen",
-                        tint = Color.White
-                    )
+            // Top-right controls overlay for webview (Quality badge & Fullscreen toggle)
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Quality Selector Badge (FHD / HD)
+                Box {
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier
+                            .clickable { showQualityMenu = true }
+                            .testTag("quality_selector_badge_web")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = qualityLabel,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (qualityLabel == "FHD") Color(0xFF00E676) else Color.White
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = showQualityMenu,
+                        onDismissRequest = { showQualityMenu = false }
+                    ) {
+                        listOf("1080p FHD (High Quality)", "720p HD (Standard)", "480p SD", "360p Data Saver").forEach { qual ->
+                            DropdownMenuItem(
+                                text = { Text(qual, fontSize = 13.sp, fontWeight = if (localQuality.startsWith(qual.take(4))) FontWeight.Bold else FontWeight.Normal) },
+                                onClick = {
+                                    localQuality = qual
+                                    onQualityChange?.invoke(qual)
+                                    showQualityMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                if (onToggleFullscreen != null) {
+                    IconButton(
+                        onClick = onToggleFullscreen,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                            .testTag("fullscreen_toggle_button")
+                    ) {
+                        Icon(
+                            imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                            contentDescription = if (isFullscreen) "Exit Fullscreen" else "Enter Fullscreen",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         } else {
@@ -170,25 +230,71 @@ fun VideoPlayerView(
                     .background(Color.Black.copy(alpha = if (showControls || !isPlaying) 0.55f else 0.15f))
             )
 
-            // Top right fullscreen button
-            if (onToggleFullscreen != null) {
-                AnimatedVisibility(
-                    visible = showControls || !isPlaying,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
+            // Top right overlay: Video Quality Selector Badge (FHD / HD) and Fullscreen Button
+            AnimatedVisibility(
+                visible = showControls || !isPlaying,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    IconButton(
-                        onClick = onToggleFullscreen,
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                            .testTag("player_fullscreen_button")
-                    ) {
-                        Icon(
-                            imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                            contentDescription = if (isFullscreen) "Exit Fullscreen" else "Enter Fullscreen",
-                            tint = Color.White
-                        )
+                    // Video Quality Selector Badge (FHD / HD)
+                    Box {
+                        Surface(
+                            color = Color.Black.copy(alpha = 0.7f),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .clickable { showQualityMenu = true }
+                                .testTag("quality_selector_badge")
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = qualityLabel,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (qualityLabel == "FHD") Color(0xFF00E676) else Color.White
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showQualityMenu,
+                            onDismissRequest = { showQualityMenu = false }
+                        ) {
+                            listOf("1080p FHD (High Quality)", "720p HD (Standard)", "480p SD", "360p Data Saver").forEach { qual ->
+                                DropdownMenuItem(
+                                    text = { Text(qual, fontSize = 13.sp, fontWeight = if (localQuality.startsWith(qual.take(4))) FontWeight.Bold else FontWeight.Normal) },
+                                    onClick = {
+                                        localQuality = qual
+                                        onQualityChange?.invoke(qual)
+                                        showQualityMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (onToggleFullscreen != null) {
+                        IconButton(
+                            onClick = onToggleFullscreen,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                                .testTag("player_fullscreen_button")
+                        ) {
+                            Icon(
+                                imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                contentDescription = if (isFullscreen) "Exit Fullscreen" else "Enter Fullscreen",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }

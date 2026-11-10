@@ -488,7 +488,12 @@ class YouTubeRssService(
                                 }
                                 val formattedPublished = formatPublishedTime(currentPublished)
                                 val finalViews = currentViews.ifBlank { deriveRealisticViews(currentVideoId) }
-                                val isShort = currentLink.contains("/shorts/") || currentTitle.contains("#shorts", ignoreCase = true)
+                                val titleLower = currentTitle.lowercase()
+                                val descLower = currentDescription.lowercase()
+                                val linkLower = currentLink.lowercase()
+                                val isShort = linkLower.contains("/shorts/") ||
+                                        titleLower.contains("#shorts") || titleLower.contains("#short") ||
+                                        descLower.contains("#shorts") || descLower.contains("#short")
                                 val finalDuration = deriveDuration(currentVideoId, isShort)
 
                                 items.add(

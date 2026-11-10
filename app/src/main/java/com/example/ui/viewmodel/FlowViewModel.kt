@@ -125,6 +125,12 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
+            repository.shortsFlow.collect { dynamicShorts ->
+                _uiState.value = _uiState.value.copy(shorts = dynamicShorts)
+            }
+        }
+
+        viewModelScope.launch {
             repository.channelsFlow.collect { channels ->
                 _uiState.value = _uiState.value.copy(channels = channels)
             }

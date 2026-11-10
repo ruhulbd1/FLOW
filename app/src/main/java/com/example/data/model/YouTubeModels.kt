@@ -132,3 +132,46 @@ data class YouTubeChannelStatistics(
     @Json(name = "videoCount") val videoCount: String? = null,
     @Json(name = "viewCount") val viewCount: String? = null
 )
+
+@JsonClass(generateAdapter = true)
+data class YouTubePlaylistItemsResponse(
+    @Json(name = "items") val items: List<YouTubePlaylistItem>? = null,
+    @Json(name = "nextPageToken") val nextPageToken: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class YouTubePlaylistItem(
+    @Json(name = "id") val id: String? = null,
+    @Json(name = "snippet") val snippet: YouTubeSnippetInfo? = null,
+    @Json(name = "contentDetails") val contentDetails: YouTubePlaylistItemDetails? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class YouTubePlaylistItemDetails(
+    @Json(name = "videoId") val videoId: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class YouTubeVideoDetailsResponse(
+    @Json(name = "items") val items: List<YouTubeVideoItemDetail>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class YouTubeVideoItemDetail(
+    @Json(name = "id") val id: String? = null,
+    @Json(name = "snippet") val snippet: YouTubeSnippetInfo? = null,
+    @Json(name = "contentDetails") val contentDetails: YouTubeContentDetails? = null,
+    @Json(name = "statistics") val statistics: YouTubeVideoStatistics? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class YouTubeContentDetails(
+    @Json(name = "duration") val duration: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class YouTubeVideoStatistics(
+    @Json(name = "viewCount") val viewCount: String? = null,
+    @Json(name = "likeCount") val likeCount: String? = null,
+    @Json(name = "commentCount") val commentCount: String? = null
+)
