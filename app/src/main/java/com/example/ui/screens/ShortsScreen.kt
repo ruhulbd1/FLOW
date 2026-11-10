@@ -1,6 +1,12 @@
 package com.example.ui.screens
 
+import android.annotation.SuppressLint
 import android.content.Intent
+import android.view.ViewGroup
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -18,11 +24,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -64,11 +73,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.example.data.model.Comment
 import com.example.data.model.VideoItem
 import com.example.ui.theme.FlowRed
 
+@SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShortsScreen(
@@ -102,6 +113,23 @@ fun ShortsScreen(
     var commentInput by remember { mutableStateOf("") }
     val sheetState = rememberModalBottomSheetState()
 
+    val resolvedVideoId = remember(currentShort.id, currentShort.thumbnailUrl) {
+        if (currentShort.id.length == 11 && !currentShort.id.startsWith("short") && !currentShort.id.startsWith("demo")) {
+            currentShort.id
+        } else if (currentShort.thumbnailUrl.contains("/vi/")) {
+            val candidate = currentShort.thumbnailUrl.substringAfter("/vi/").substringBefore("/")
+            if (candidate.length == 11) candidate else currentShort.id
+        } else {
+            when (currentShort.id) {
+                "short1" -> "DfanjKOWW_k"
+                "short2" -> "LGsd_mH1c6k"
+                "short3" -> "ridzjSgy1bc"
+                "short4" -> "rsOiZE19RVo"
+                else -> currentShort.id
+            }
+        }
+    }
+
     // Rotating music disc animation
     val infiniteTransition = rememberInfiniteTransition(label = "disc_spin")
     val discRotation by infiniteTransition.animateFloat(
@@ -128,15 +156,65 @@ fun ShortsScreen(
                 }
             }
     ) {
-        // Fullscreen Visual / Video Preview
-        AsyncImage(
-            model = currentShort.thumbnailUrl,
-            contentDescription = currentShort.title,
-            contentScale = ContentScale.Crop,
+        // Fullscreen Active Short Video Player (Autoplay & Continuous playback)
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .clickable { onTogglePlay() }
-        )
+        ) {
+            // Immediate backdrop thumbnail preview
+            AsyncImage(
+                model = currentShort.thumbnailUrl,
+                contentDescription = currentShort.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Autoplaying Fullscreen Video View
+            if (isPlaying) {
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.mediaPlaybackRequiresUserGesture = false
+                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            settings.cacheMode = WebSettings.LOAD_DEFAULT
+                            webChromeClient = WebChromeClient()
+                            webViewClient = WebViewClient()
+                            setBackgroundColor(android.graphics.Color.BLACK)
+                        }
+                    },
+                    update = { webView ->
+                        val embedHtml = """
+                            <!DOCTYPE html>
+                            <html>
+                            <head>
+                                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                                <style>
+                                    body, html { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; }
+                                    iframe { width:100%; height:100%; border:none; object-fit: cover; }
+                                </style>
+                            </head>
+                            <body>
+                                <iframe 
+                                    src="https://www.youtube-nocookie.com/embed/${resolvedVideoId}?autoplay=1&playsinline=1&controls=0&loop=1&playlist=${resolvedVideoId}&rel=0&modestbranding=1"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowfullscreen>
+                                </iframe>
+                            </body>
+                            </html>
+                        """.trimIndent()
+                        webView.loadDataWithBaseURL("https://www.youtube-nocookie.com", embedHtml, "text/html", "UTF-8", null)
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
 
         // Top & Bottom shadow gradients for readability
         Box(
@@ -422,32 +500,38 @@ fun ShortsScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                comments.take(4).forEach { comment ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        AsyncImage(
-                            model = comment.avatarUrl,
-                            contentDescription = comment.author,
-                            contentScale = ContentScale.Crop,
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 280.dp)
+                ) {
+                    items(comments) { comment ->
+                        Row(
                             modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "${comment.author} • ${comment.timeAgo}",
-                                fontSize = 11.sp,
-                                color = Color.Gray
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            AsyncImage(
+                                model = comment.avatarUrl,
+                                contentDescription = comment.author,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
                             )
-                            Text(
-                                text = comment.text,
-                                fontSize = 13.sp
-                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "${comment.author} • ${comment.timeAgo}",
+                                    fontSize = 11.sp,
+                                    color = Color.Gray
+                                )
+                                Text(
+                                    text = comment.text,
+                                    fontSize = 13.sp
+                                )
+                            }
                         }
                     }
                 }

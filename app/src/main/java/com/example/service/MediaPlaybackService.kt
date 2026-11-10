@@ -136,10 +136,12 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
 
                 override fun onSeekTo(pos: Long) {
                     currentPositionMs = pos
-                    mediaPlayer?.let {
-                        if (it.isPlaying) {
-                            it.seekTo((pos % (it.duration.coerceAtLeast(1))).toInt())
-                        }
+                    mediaPlayer?.let { player ->
+                        try {
+                            if (player.isPlaying) {
+                                player.seekTo((pos % (player.duration.coerceAtLeast(1))).toInt())
+                            }
+                        } catch (_: Exception) {}
                     }
                     updatePlaybackState()
                 }
@@ -150,7 +152,6 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
 
     private fun initializeMediaPlayer() {
         try {
-            // Setup MediaPlayer with wake lock and audio attributes
             mediaPlayer = MediaPlayer().apply {
                 setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
                 val audioAttributes = AudioAttributes.Builder()
@@ -162,6 +163,68 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
             }
         } catch (e: Exception) {
             // Handle gracefully
+        }
+    }
+
+    private fun getStreamUrlForVideo(videoId: String): String {
+        return when (videoId) {
+            "music1" -> "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+            "music2" -> "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
+            "music3" -> "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"
+            "music4" -> "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"
+            else -> {
+                val pool = listOf(
+                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"
+                )
+                val idx = Math.abs(videoId.hashCode()) % pool.size
+                pool[idx]
+            }
+        }
+    }
+
+    private fun startMediaPlayerPlayback(isNewTrack: Boolean) {
+        try {
+            if (isNewTrack || mediaPlayer == null) {
+                try {
+                    mediaPlayer?.stop()
+                    mediaPlayer?.release()
+                } catch (_: Exception) {}
+
+                mediaPlayer = MediaPlayer().apply {
+                    setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build()
+                    setAudioAttributes(audioAttributes)
+                    isLooping = true
+                    val streamUrl = getStreamUrlForVideo(currentVideoId)
+                    setDataSource(streamUrl)
+                    setOnPreparedListener { player ->
+                        if (isPlaying) {
+                            if (currentPositionMs > 0 && currentPositionMs < player.duration) {
+                                player.seekTo(currentPositionMs.toInt())
+                            }
+                            player.start()
+                        }
+                    }
+                    setOnErrorListener { _, _, _ ->
+                        true
+                    }
+                    prepareAsync()
+                }
+            } else {
+                mediaPlayer?.let { player ->
+                    if (!player.isPlaying && isPlaying) {
+                        player.start()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Gracefully ignore audio setup issues
         }
     }
 
@@ -186,10 +249,10 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         }
 
         when (action) {
-            ACTION_PLAY -> handlePlay()
+            ACTION_PLAY -> handlePlay(isNewTrack)
             ACTION_PAUSE -> handlePause()
             ACTION_PLAY_PAUSE -> {
-                if (isPlaying) handlePause() else handlePlay()
+                if (isPlaying) handlePause() else handlePlay(isNewTrack)
             }
             ACTION_NEXT -> MediaPlaybackManager.skipNext(applicationContext)
             ACTION_PREVIOUS -> MediaPlaybackManager.skipPrevious(applicationContext)
@@ -213,13 +276,16 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         }
     }
 
-    private fun handlePlay() {
+    private fun handlePlay(isNewTrack: Boolean = false) {
         if (!requestAudioFocus()) {
             return
         }
 
         isPlaying = true
         acquireWakeLock()
+
+        // Active background audio playback engine: plays audio stream through MediaPlayer with PARTIAL_WAKE_LOCK
+        startMediaPlayerPlayback(isNewTrack)
 
         // Update MediaSession state
         updatePlaybackState()
@@ -244,6 +310,12 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         isPlaying = false
         releaseWakeLock()
 
+        try {
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.pause()
+            }
+        } catch (_: Exception) {}
+
         updatePlaybackState()
         stopProgressTracking()
 
@@ -266,6 +338,14 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         releaseWakeLock()
         abandonAudioFocus()
         stopProgressTracking()
+
+        try {
+            if (mediaPlayer?.isPlaying == true) {
+                mediaPlayer?.stop()
+            }
+            mediaPlayer?.release()
+            mediaPlayer = null
+        } catch (_: Exception) {}
 
         updatePlaybackState(isStopped = true)
         mediaSession.isActive = false

@@ -538,6 +538,7 @@ fun VideoDetailSheet(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
                         .testTag("comments_container_card"),
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
@@ -603,22 +604,22 @@ fun VideoDetailSheet(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Render bounded comments inside the card
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 280.dp)
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            if (comments.isEmpty()) {
-                                Text(
-                                    text = "No comments yet. Be the first to comment!",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                )
-                            } else {
-                                comments.forEach { comment ->
+                        // Render strictly bounded comments inside the card
+                        if (comments.isEmpty()) {
+                            Text(
+                                text = "No comments yet. Be the first to comment!",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(240.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                            ) {
+                                items(comments) { comment ->
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
