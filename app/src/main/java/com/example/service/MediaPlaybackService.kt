@@ -51,6 +51,7 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         const val ACTION_PREVIOUS = "com.example.service.ACTION_PREVIOUS"
         const val ACTION_STOP = "com.example.service.ACTION_STOP"
 
+        const val EXTRA_STREAM_URL = "extra_stream_url"
         const val EXTRA_VIDEO_ID = "extra_video_id"
         const val EXTRA_VIDEO_TITLE = "extra_video_title"
         const val EXTRA_CHANNEL_TITLE = "extra_channel_title"
@@ -88,6 +89,7 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
 
     // Current metadata
     private var currentVideoId: String = ""
+    private var currentStreamUrl: String = ""
     private var currentTitle: String = "FLOW Video"
     private var currentChannel: String = "Creator"
     private var currentThumbnailUrl: String = ""
@@ -219,7 +221,7 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
                         .build()
                     setAudioAttributes(audioAttributes)
                     isLooping = true
-                    val streamUrl = getStreamUrlForVideo(currentVideoId)
+                    val streamUrl = currentStreamUrl.ifBlank { getStreamUrlForVideo(currentVideoId) }
                     setDataSource(streamUrl)
                     setOnPreparedListener { player ->
                         if (isPlaying) {
@@ -250,6 +252,7 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         val action = intent?.action ?: return START_NOT_STICKY
 
         val videoId = intent.getStringExtra(EXTRA_VIDEO_ID) ?: currentVideoId
+        val streamUrlExtra = intent.getStringExtra(EXTRA_STREAM_URL) ?: ""
         val title = intent.getStringExtra(EXTRA_VIDEO_TITLE) ?: currentTitle
         val channel = intent.getStringExtra(EXTRA_CHANNEL_TITLE) ?: currentChannel
         val thumbUrl = intent.getStringExtra(EXTRA_THUMBNAIL_URL) ?: currentThumbnailUrl
@@ -260,9 +263,13 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
             MediaPlaybackManager.isBackgroundPlayEnabled.value
         )
 
-        val isNewTrack = videoId != currentVideoId && videoId.isNotBlank()
+        val isNewTrack = (videoId != currentVideoId && videoId.isNotBlank()) ||
+                (streamUrlExtra.isNotBlank() && streamUrlExtra != currentStreamUrl)
         if (isNewTrack) {
             currentVideoId = videoId
+            if (streamUrlExtra.isNotBlank()) {
+                currentStreamUrl = streamUrlExtra
+            }
             currentTitle = title
             currentChannel = channel
             currentThumbnailUrl = thumbUrl
@@ -508,6 +515,7 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
 
     private fun updateMetadata() {
         val metadataBuilder = MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_MEDIA_ID, currentVideoId)
             .putString(MediaMetadata.METADATA_KEY_TITLE, currentTitle)
             .putString(MediaMetadata.METADATA_KEY_ARTIST, currentChannel)
             .putString(MediaMetadata.METADATA_KEY_ALBUM, "FLOW")

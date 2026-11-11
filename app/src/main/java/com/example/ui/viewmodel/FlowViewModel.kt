@@ -73,7 +73,8 @@ data class FlowUiState(
 
     // Player & Playback Options
     val playerSettings: com.example.data.model.PlayerSettings = com.example.data.model.PlayerSettings(),
-    val sleepTimerRemainingSeconds: Int = 0
+    val sleepTimerRemainingSeconds: Int = 0,
+    val isPlayerSettingsOpen: Boolean = false
 )
 
 class FlowViewModel(application: Application) : AndroidViewModel(application) {
@@ -98,6 +99,13 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             MediaPlaybackManager.playerSettings.collect { settings ->
                 _uiState.value = _uiState.value.copy(playerSettings = settings)
+            }
+        }
+
+        viewModelScope.launch {
+            repository.playerSettingsFlow.collect { savedSettings ->
+                MediaPlaybackManager.updatePlayerSettings(savedSettings)
+                _uiState.value = _uiState.value.copy(playerSettings = savedSettings)
             }
         }
 
@@ -373,10 +381,15 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun togglePlayPause() {
-        val nextState = !_uiState.value.isPlaying
-        _uiState.value = _uiState.value.copy(isPlaying = nextState)
-        MediaPlaybackManager.togglePlayPause(getApplication())
+    fun togglePlayPause(video: VideoItem? = null) {
+        val target = video ?: _uiState.value.activeVideo
+        val isDifferent = target != null && _uiState.value.activeVideo?.id != target.id
+        val nextPlaying = if (isDifferent) true else !_uiState.value.isPlaying
+        _uiState.value = _uiState.value.copy(
+            activeVideo = target ?: _uiState.value.activeVideo,
+            isPlaying = nextPlaying
+        )
+        MediaPlaybackManager.togglePlayPause(getApplication(), target)
     }
 
     fun collapsePlayer() {
@@ -526,6 +539,17 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
             playerSettings = settings,
             userFeedbackMessage = "Player settings updated"
         )
+        viewModelScope.launch {
+            repository.savePlayerSettings(settings)
+        }
+    }
+
+    fun openPlayerSettings() {
+        _uiState.value = _uiState.value.copy(isPlayerSettingsOpen = true)
+    }
+
+    fun closePlayerSettings() {
+        _uiState.value = _uiState.value.copy(isPlayerSettingsOpen = false)
     }
 
     fun setSleepTimer(minutes: Int) {

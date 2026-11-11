@@ -81,6 +81,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,6 +118,9 @@ fun SettingsScreen(
     backupExportJson: String?,
     playerSettings: PlayerSettings = PlayerSettings(),
     onUpdatePlayerSettings: (PlayerSettings) -> Unit = {},
+    isPlayerSettingsOpen: Boolean = false,
+    onOpenPlayerSettings: () -> Unit = {},
+    onClosePlayerSettings: () -> Unit = {},
     sleepTimerRemainingSeconds: Int = 0,
     onSetSleepTimer: (Int) -> Unit = {},
     onSaveApiSettings: (String, List<String>) -> Unit,
@@ -149,17 +153,20 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
 
-    // Sub-screen navigation state ("player", null)
-    var currentSubScreen by remember { mutableStateOf<String?>(null) }
+    // Sub-screen navigation state ("player", null) with rememberSaveable across recompositions
+    var currentSubScreen by rememberSaveable { mutableStateOf<String?>(null) }
 
     // If player sub-screen is active, render PlayerSettingsScreen with BackHandler
-    if (currentSubScreen == "player") {
+    if (isPlayerSettingsOpen || currentSubScreen == "player") {
         PlayerSettingsScreen(
             playerSettings = playerSettings,
             onUpdatePlayerSettings = onUpdatePlayerSettings,
             sleepTimerRemainingSeconds = sleepTimerRemainingSeconds,
             onSetSleepTimer = onSetSleepTimer,
-            onBack = { currentSubScreen = null }
+            onBack = {
+                currentSubScreen = null
+                onClosePlayerSettings()
+            }
         )
         return
     }
@@ -503,7 +510,10 @@ fun SettingsScreen(
                             title = "Player & playback",
                             subtitle = "Background play, gestures, PiP, player buttons",
                             icon = Icons.Default.PlayCircle,
-                            onClick = { currentSubScreen = "player" },
+                            onClick = {
+                                currentSubScreen = "player"
+                                onOpenPlayerSettings()
+                            },
                             testTag = "settings_player_playback_row",
                             badgeText = "Max Player Engine"
                         )

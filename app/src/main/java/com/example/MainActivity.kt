@@ -114,12 +114,14 @@ class MainActivity : ComponentActivity() {
             FlowTheme(darkTheme = isDarkTheme) {
                 // Back button handling for secondary states
                 BackHandler(
-                    enabled = uiState.isPlayerExpanded ||
+                    enabled = uiState.isPlayerSettingsOpen ||
+                            uiState.isPlayerExpanded ||
                             uiState.isSearchOpen ||
                             uiState.isSettingsOpen ||
                             uiState.activeTab != "Home"
                 ) {
                     when {
+                        uiState.isPlayerSettingsOpen -> viewModel.closePlayerSettings()
                         uiState.isPlayerExpanded -> viewModel.collapsePlayer()
                         uiState.isSearchOpen -> viewModel.closeSearch()
                         uiState.isSettingsOpen -> viewModel.closeSettings()
@@ -144,7 +146,7 @@ class MainActivity : ComponentActivity() {
                                         MiniPlayer(
                                             video = activeVideo,
                                             isPlaying = uiState.isPlaying,
-                                            onTogglePlay = { viewModel.togglePlayPause() },
+                                            onTogglePlay = { viewModel.togglePlayPause(activeVideo) },
                                             onExpand = { viewModel.expandPlayer() },
                                             onClose = { viewModel.closePlayer() }
                                         )
@@ -317,6 +319,9 @@ class MainActivity : ComponentActivity() {
                                 backupExportJson = uiState.backupExportJson,
                                 playerSettings = uiState.playerSettings,
                                 onUpdatePlayerSettings = { viewModel.updatePlayerSettings(it) },
+                                isPlayerSettingsOpen = uiState.isPlayerSettingsOpen,
+                                onOpenPlayerSettings = { viewModel.openPlayerSettings() },
+                                onClosePlayerSettings = { viewModel.closePlayerSettings() },
                                 sleepTimerRemainingSeconds = uiState.sleepTimerRemainingSeconds,
                                 onSetSleepTimer = { viewModel.setSleepTimer(it) },
                                 onSaveApiSettings = { key, channels -> viewModel.saveApiSettings(key, channels) },

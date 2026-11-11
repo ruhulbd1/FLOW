@@ -60,8 +60,9 @@ class VideoRepository(
         val KEY_VIDEO_QUALITY = stringPreferencesKey("video_quality") // "Auto", "1080p", "720p", "360p"
         val KEY_LANGUAGE_REGION = stringPreferencesKey("language_region") // "English (US)", "Bengali (BD)", "Global"
         val KEY_STORAGE_LOCATION = stringPreferencesKey("storage_location") // "Internal Storage", "SD Card"
-        val KEY_BLOCKED_TOPICS = stringPreferencesKey("blocked_topics_csv")
         val KEY_NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled") // default true
+        val KEY_BLOCKED_TOPICS = stringPreferencesKey("blocked_topics_csv")
+        val KEY_PLAYER_SETTINGS_JSON = stringPreferencesKey("player_settings_json")
 
         val DEFAULT_CHANNELS = listOf(
             Channel(
@@ -432,6 +433,32 @@ class VideoRepository(
 
     val notificationsEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[KEY_NOTIFICATIONS_ENABLED] ?: true
+    }
+
+    val playerSettingsFlow: Flow<com.example.data.model.PlayerSettings> = context.dataStore.data.map { preferences ->
+        val json = preferences[KEY_PLAYER_SETTINGS_JSON]
+        if (!json.isNullOrBlank()) {
+            try {
+                val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+                val adapter = moshi.adapter(com.example.data.model.PlayerSettings::class.java)
+                adapter.fromJson(json) ?: com.example.data.model.PlayerSettings()
+            } catch (_: Exception) {
+                com.example.data.model.PlayerSettings()
+            }
+        } else {
+            com.example.data.model.PlayerSettings()
+        }
+    }
+
+    suspend fun savePlayerSettings(settings: com.example.data.model.PlayerSettings) {
+        try {
+            val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+            val adapter = moshi.adapter(com.example.data.model.PlayerSettings::class.java)
+            val json = adapter.toJson(settings)
+            context.dataStore.edit { preferences ->
+                preferences[KEY_PLAYER_SETTINGS_JSON] = json
+            }
+        } catch (_: Exception) {}
     }
 
     // Setters

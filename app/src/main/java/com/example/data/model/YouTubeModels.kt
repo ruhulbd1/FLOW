@@ -21,7 +21,8 @@ data class VideoItem(
     val likes: Int = 42500,
     val isLiked: Boolean = false,
     val isSaved: Boolean = false,
-    val streamId: String = id
+    val streamId: String = id,
+    val streamUrl: String = ""
 )
 
 data class Comment(
@@ -176,6 +177,7 @@ data class YouTubeVideoStatistics(
     @Json(name = "commentCount") val commentCount: String? = null
 )
 
+@JsonClass(generateAdapter = true)
 data class PlayerSettings(
     val backgroundPlayEnabled: Boolean = true,
     val pauseOnHeadphonesDisconnect: Boolean = true,

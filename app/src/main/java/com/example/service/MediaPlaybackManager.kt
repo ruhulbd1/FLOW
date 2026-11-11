@@ -105,6 +105,7 @@ object MediaPlaybackManager {
             putExtra(MediaPlaybackService.EXTRA_VIDEO_TITLE, video.title)
             putExtra(MediaPlaybackService.EXTRA_CHANNEL_TITLE, video.channelTitle)
             putExtra(MediaPlaybackService.EXTRA_THUMBNAIL_URL, video.thumbnailUrl)
+            putExtra(MediaPlaybackService.EXTRA_STREAM_URL, video.streamUrl)
             putExtra(MediaPlaybackService.EXTRA_DURATION, video.duration)
             putExtra(MediaPlaybackService.EXTRA_BACKGROUND_PLAY_ENABLED, _isBackgroundPlayEnabled.value)
         }
@@ -116,18 +117,22 @@ object MediaPlaybackManager {
         }
     }
 
-    fun togglePlayPause(context: Context) {
-        val newPlayingState = !_isPlaying.value
+    fun togglePlayPause(context: Context, video: VideoItem? = null) {
+        val targetVideo = video ?: _currentVideo.value ?: return
+        val isDifferentVideo = _currentVideo.value?.id != targetVideo.id
+        _currentVideo.value = targetVideo
+
+        val newPlayingState = if (isDifferentVideo) true else !_isPlaying.value
         _isPlaying.value = newPlayingState
-        val video = _currentVideo.value ?: return
 
         val intent = Intent(context, MediaPlaybackService::class.java).apply {
             action = if (newPlayingState) MediaPlaybackService.ACTION_PLAY else MediaPlaybackService.ACTION_PAUSE
-            putExtra(MediaPlaybackService.EXTRA_VIDEO_ID, video.id)
-            putExtra(MediaPlaybackService.EXTRA_VIDEO_TITLE, video.title)
-            putExtra(MediaPlaybackService.EXTRA_CHANNEL_TITLE, video.channelTitle)
-            putExtra(MediaPlaybackService.EXTRA_THUMBNAIL_URL, video.thumbnailUrl)
-            putExtra(MediaPlaybackService.EXTRA_DURATION, video.duration)
+            putExtra(MediaPlaybackService.EXTRA_VIDEO_ID, targetVideo.id)
+            putExtra(MediaPlaybackService.EXTRA_VIDEO_TITLE, targetVideo.title)
+            putExtra(MediaPlaybackService.EXTRA_CHANNEL_TITLE, targetVideo.channelTitle)
+            putExtra(MediaPlaybackService.EXTRA_THUMBNAIL_URL, targetVideo.thumbnailUrl)
+            putExtra(MediaPlaybackService.EXTRA_STREAM_URL, targetVideo.streamUrl)
+            putExtra(MediaPlaybackService.EXTRA_DURATION, targetVideo.duration)
             putExtra(MediaPlaybackService.EXTRA_BACKGROUND_PLAY_ENABLED, _isBackgroundPlayEnabled.value)
         }
 
