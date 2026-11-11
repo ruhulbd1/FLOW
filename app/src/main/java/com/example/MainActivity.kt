@@ -61,6 +61,7 @@ import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.MusicScreen
 import com.example.ui.screens.NotificationsSheet
+import com.example.ui.screens.PlayerScreen
 import com.example.ui.screens.SearchScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.ShortsScreen
@@ -362,12 +363,13 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        // Full Video Player Sheet
+                        // Dedicated In-App Player Screen (PlayerScreen.kt)
                         if (uiState.isPlayerExpanded && uiState.activeVideo != null) {
                             val activeVideo = uiState.activeVideo!!
-                            VideoDetailSheet(
+                            PlayerScreen(
                                 video = activeVideo,
                                 isPlaying = uiState.isPlaying,
+                                defaultQuality = uiState.videoQuality,
                                 isLiked = uiState.likedVideoIds.contains(activeVideo.id),
                                 isSaved = uiState.savedVideoIds.contains(activeVideo.id),
                                 isDownloaded = uiState.downloadedVideoIds.contains(activeVideo.id),
@@ -375,7 +377,7 @@ class MainActivity : ComponentActivity() {
                                 isSubscribed = uiState.subscribedChannelIds.contains(activeVideo.channelId),
                                 comments = uiState.videoComments[activeVideo.id] ?: emptyList(),
                                 relatedVideos = uiState.videos,
-                                onTogglePlay = { viewModel.togglePlayPause() },
+                                onTogglePlay = { viewModel.togglePlayPause(activeVideo) },
                                 onCollapse = { viewModel.collapsePlayer() },
                                 onToggleLike = { viewModel.toggleLike(it) },
                                 onToggleSave = { viewModel.toggleSave(it) },

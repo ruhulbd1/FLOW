@@ -68,6 +68,10 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended:1.6.8")
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // Media3 ExoPlayer & UI
+    implementation("androidx.media3:media3-exoplayer:1.3.1")
+    implementation("androidx.media3:media3-ui:1.3.1")
+
     // Navigation & DataStore
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.datastore.preferences)
