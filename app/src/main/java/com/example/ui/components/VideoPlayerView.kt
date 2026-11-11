@@ -23,7 +23,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.widget.Toast
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.ui.viewinterop.AndroidView
+import coil.compose.AsyncImage
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
@@ -31,6 +35,10 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -56,9 +64,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import coil.compose.AsyncImage
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
 import com.example.data.model.VideoItem
+import com.example.service.MediaPlaybackManager
 import com.example.ui.theme.FlowRed
 import kotlinx.coroutines.delay
 
@@ -74,6 +83,11 @@ fun VideoPlayerView(
     onQualityChange: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val playerSettings by MediaPlaybackManager.playerSettings.collectAsState()
+    val sleepTimerRemainingSeconds by MediaPlaybackManager.sleepTimerRemainingSeconds.collectAsState()
+    val seekStep = (playerSettings.doubleTapSeekSeconds.toFloat() / (38f * 60f)).coerceIn(0.005f, 0.15f)
+
     var progress by remember(video.id) { mutableFloatStateOf(0.12f) }
     var showControls by remember { mutableStateOf(false) }
     var showQualityMenu by remember { mutableStateOf(false) }
@@ -241,6 +255,62 @@ fun VideoPlayerView(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    // SponsorBlock Button
+                    if (playerSettings.showSponsorBlockButton) {
+                        IconButton(
+                            onClick = {
+                                Toast.makeText(context, "SponsorBlock: Segments skipped automatically", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                        ) {
+                            Icon(Icons.Default.Shield, contentDescription = "SponsorBlock", tint = Color(0xFF00E676), modifier = Modifier.size(18.dp))
+                        }
+                    }
+
+                    // Sleep Timer Button
+                    if (playerSettings.showSleepTimerButton) {
+                        IconButton(
+                            onClick = {
+                                val currentTimer = playerSettings.sleepTimerMinutes
+                                val nextTimer = when (currentTimer) {
+                                    0 -> 15
+                                    15 -> 30
+                                    30 -> 60
+                                    else -> 0
+                                }
+                                MediaPlaybackManager.setSleepTimer(nextTimer, context)
+                                val msg = if (nextTimer > 0) "Sleep timer set to ${nextTimer}m" else "Sleep timer turned off"
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                        ) {
+                            Icon(
+                                Icons.Default.Timer,
+                                contentDescription = "Sleep Timer",
+                                tint = if (sleepTimerRemainingSeconds > 0) FlowRed else Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    // Cast Button
+                    if (playerSettings.showCastButton) {
+                        IconButton(
+                            onClick = {
+                                Toast.makeText(context, "Searching for Cast devices...", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                        ) {
+                            Icon(Icons.Default.Cast, contentDescription = "Cast", tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
+                    }
+
                     // Video Quality Selector Badge (FHD / HD)
                     Box {
                         Surface(
@@ -305,18 +375,32 @@ fun VideoPlayerView(
                 modifier = Modifier.align(Alignment.Center)
             ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (playerSettings.showPrevNextButtons) {
+                        IconButton(
+                            onClick = { MediaPlaybackManager.skipPrevious(context) },
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipPrevious,
+                                contentDescription = "Previous Track",
+                                tint = Color.White,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                    }
+
                     IconButton(
-                        onClick = { progress = (progress - 0.05f).coerceAtLeast(0f) },
+                        onClick = { progress = (progress - seekStep).coerceAtLeast(0f) },
                         modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Replay10,
-                            contentDescription = "Rewind 10 seconds",
+                            contentDescription = "Rewind ${playerSettings.doubleTapSeekSeconds}s",
                             tint = Color.White,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(34.dp)
                         )
                     }
 
@@ -336,15 +420,29 @@ fun VideoPlayerView(
                     }
 
                     IconButton(
-                        onClick = { progress = (progress + 0.05f).coerceAtMost(1f) },
+                        onClick = { progress = (progress + seekStep).coerceAtMost(1f) },
                         modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Forward10,
-                            contentDescription = "Forward 10 seconds",
+                            contentDescription = "Forward ${playerSettings.doubleTapSeekSeconds}s",
                             tint = Color.White,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(34.dp)
                         )
+                    }
+
+                    if (playerSettings.showPrevNextButtons) {
+                        IconButton(
+                            onClick = { MediaPlaybackManager.skipNext(context) },
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SkipNext,
+                                contentDescription = "Next Track",
+                                tint = Color.White,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
                     }
                 }
             }

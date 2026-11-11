@@ -56,6 +56,7 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         const val EXTRA_CHANNEL_TITLE = "extra_channel_title"
         const val EXTRA_THUMBNAIL_URL = "extra_thumbnail_url"
         const val EXTRA_DURATION = "extra_duration"
+        const val EXTRA_BACKGROUND_PLAY_ENABLED = "extra_background_play_enabled"
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
@@ -66,6 +67,18 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
     private lateinit var powerManager: PowerManager
     private var wakeLock: PowerManager.WakeLock? = null
     private var audioFocusRequest: AudioFocusRequest? = null
+    private var isBackgroundPlayEnabled = true
+    private var isReceiverRegistered = false
+
+    private val noisyReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (AudioManager.ACTION_AUDIO_BECOMING_NOISY == intent?.action) {
+                if (MediaPlaybackManager.playerSettings.value.pauseOnHeadphonesDisconnect) {
+                    handlePause()
+                }
+            }
+        }
+    }
 
     // Audio Engine
     private var mediaPlayer: MediaPlayer? = null
@@ -89,6 +102,11 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "flow:media_playback_wakelock").apply {
             setReferenceCounted(false)
         }
+
+        try {
+            registerReceiver(noisyReceiver, android.content.IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+            isReceiverRegistered = true
+        } catch (_: Exception) {}
 
         createNotificationChannel()
         initializeMediaSession()
@@ -237,6 +255,11 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         val thumbUrl = intent.getStringExtra(EXTRA_THUMBNAIL_URL) ?: currentThumbnailUrl
         val durationStr = intent.getStringExtra(EXTRA_DURATION)
 
+        isBackgroundPlayEnabled = intent.getBooleanExtra(
+            EXTRA_BACKGROUND_PLAY_ENABLED,
+            MediaPlaybackManager.isBackgroundPlayEnabled.value
+        )
+
         val isNewTrack = videoId != currentVideoId && videoId.isNotBlank()
         if (isNewTrack) {
             currentVideoId = videoId
@@ -381,9 +404,10 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
     }
 
     private fun acquireWakeLock() {
+        if (!isBackgroundPlayEnabled) return
         try {
             if (wakeLock?.isHeld != true) {
-                wakeLock?.acquire(3 * 60 * 60 * 1000L) // 3 hours timeout safety
+                wakeLock?.acquire(4 * 60 * 60 * 1000L) // 4 hours timeout safety
             }
         } catch (e: Exception) {
             // Ignore
@@ -624,6 +648,11 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
+        if (isReceiverRegistered) {
+            try {
+                unregisterReceiver(noisyReceiver)
+            } catch (_: Exception) {}
+        }
         stopProgressTracking()
         releaseWakeLock()
         abandonAudioFocus()

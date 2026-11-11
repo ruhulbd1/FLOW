@@ -3,12 +3,21 @@ package com.example.service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import com.example.data.model.PlayerSettings
 import com.example.data.model.VideoItem
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 object MediaPlaybackManager {
+
+    private val managerScope = CoroutineScope(Dispatchers.Main + Job())
 
     private val _currentVideo = MutableStateFlow<VideoItem?>(null)
     val currentVideo: StateFlow<VideoItem?> = _currentVideo.asStateFlow()
@@ -22,12 +31,66 @@ object MediaPlaybackManager {
     private val _durationMs = MutableStateFlow(0L)
     val durationMs: StateFlow<Long> = _durationMs.asStateFlow()
 
+    // Player & Playback Configurations
+    private val _playerSettings = MutableStateFlow(PlayerSettings())
+    val playerSettings: StateFlow<PlayerSettings> = _playerSettings.asStateFlow()
+
+    private val _isBackgroundPlayEnabled = MutableStateFlow(true)
+    val isBackgroundPlayEnabled: StateFlow<Boolean> = _isBackgroundPlayEnabled.asStateFlow()
+
+    private val _sleepTimerRemainingSeconds = MutableStateFlow(0)
+    val sleepTimerRemainingSeconds: StateFlow<Int> = _sleepTimerRemainingSeconds.asStateFlow()
+
+    private var sleepTimerJob: Job? = null
     private var currentPlaylist: List<VideoItem> = emptyList()
 
     // Callbacks to notify UI when action is triggered from notification or lock screen
     var onPlayPauseRequested: (() -> Unit)? = null
     var onNextRequested: (() -> Unit)? = null
     var onPrevRequested: (() -> Unit)? = null
+
+    fun updatePlayerSettings(settings: PlayerSettings) {
+        _playerSettings.value = settings
+        _isBackgroundPlayEnabled.value = settings.backgroundPlayEnabled
+    }
+
+    fun setBackgroundPlayEnabled(enabled: Boolean) {
+        _isBackgroundPlayEnabled.value = enabled
+        _playerSettings.value = _playerSettings.value.copy(backgroundPlayEnabled = enabled)
+    }
+
+    fun setSleepTimer(minutes: Int, context: Context) {
+        sleepTimerJob?.cancel()
+        if (minutes <= 0) {
+            _sleepTimerRemainingSeconds.value = 0
+            _playerSettings.value = _playerSettings.value.copy(sleepTimerMinutes = 0)
+            return
+        }
+
+        _playerSettings.value = _playerSettings.value.copy(sleepTimerMinutes = minutes)
+        val totalSeconds = minutes * 60
+        _sleepTimerRemainingSeconds.value = totalSeconds
+
+        sleepTimerJob = managerScope.launch {
+            var remaining = totalSeconds
+            while (isActive && remaining > 0) {
+                delay(1000L)
+                remaining--
+                _sleepTimerRemainingSeconds.value = remaining
+            }
+            if (isActive && remaining <= 0) {
+                _sleepTimerRemainingSeconds.value = 0
+                _playerSettings.value = _playerSettings.value.copy(sleepTimerMinutes = 0)
+                stop(context)
+            }
+        }
+    }
+
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        _sleepTimerRemainingSeconds.value = 0
+        _playerSettings.value = _playerSettings.value.copy(sleepTimerMinutes = 0)
+    }
 
     fun startPlayback(context: Context, video: VideoItem, isPlaying: Boolean = true, playlist: List<VideoItem> = emptyList()) {
         _currentVideo.value = video
@@ -43,6 +106,7 @@ object MediaPlaybackManager {
             putExtra(MediaPlaybackService.EXTRA_CHANNEL_TITLE, video.channelTitle)
             putExtra(MediaPlaybackService.EXTRA_THUMBNAIL_URL, video.thumbnailUrl)
             putExtra(MediaPlaybackService.EXTRA_DURATION, video.duration)
+            putExtra(MediaPlaybackService.EXTRA_BACKGROUND_PLAY_ENABLED, _isBackgroundPlayEnabled.value)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -64,6 +128,7 @@ object MediaPlaybackManager {
             putExtra(MediaPlaybackService.EXTRA_CHANNEL_TITLE, video.channelTitle)
             putExtra(MediaPlaybackService.EXTRA_THUMBNAIL_URL, video.thumbnailUrl)
             putExtra(MediaPlaybackService.EXTRA_DURATION, video.duration)
+            putExtra(MediaPlaybackService.EXTRA_BACKGROUND_PLAY_ENABLED, _isBackgroundPlayEnabled.value)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

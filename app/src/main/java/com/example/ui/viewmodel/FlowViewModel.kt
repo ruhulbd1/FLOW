@@ -69,7 +69,11 @@ data class FlowUiState(
     val downloadDialogVideo: VideoItem? = null,
     val isUpdateModalOpen: Boolean = false,
     val backupExportJson: String? = null,
-    val userFeedbackMessage: String? = null
+    val userFeedbackMessage: String? = null,
+
+    // Player & Playback Options
+    val playerSettings: com.example.data.model.PlayerSettings = com.example.data.model.PlayerSettings(),
+    val sleepTimerRemainingSeconds: Int = 0
 )
 
 class FlowViewModel(application: Application) : AndroidViewModel(application) {
@@ -88,6 +92,18 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
                 if (_uiState.value.isPlaying != playing) {
                     _uiState.value = _uiState.value.copy(isPlaying = playing)
                 }
+            }
+        }
+
+        viewModelScope.launch {
+            MediaPlaybackManager.playerSettings.collect { settings ->
+                _uiState.value = _uiState.value.copy(playerSettings = settings)
+            }
+        }
+
+        viewModelScope.launch {
+            MediaPlaybackManager.sleepTimerRemainingSeconds.collect { seconds ->
+                _uiState.value = _uiState.value.copy(sleepTimerRemainingSeconds = seconds)
             }
         }
 
@@ -502,6 +518,21 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
                 userFeedbackMessage = "Download location set to $location"
             )
         }
+    }
+
+    fun updatePlayerSettings(settings: com.example.data.model.PlayerSettings) {
+        MediaPlaybackManager.updatePlayerSettings(settings)
+        _uiState.value = _uiState.value.copy(
+            playerSettings = settings,
+            userFeedbackMessage = "Player settings updated"
+        )
+    }
+
+    fun setSleepTimer(minutes: Int) {
+        MediaPlaybackManager.setSleepTimer(minutes, getApplication())
+        _uiState.value = _uiState.value.copy(
+            userFeedbackMessage = if (minutes > 0) "Sleep timer set to ${minutes}m" else "Sleep timer cancelled"
+        )
     }
 
     fun setNotificationsEnabled(enabled: Boolean) {

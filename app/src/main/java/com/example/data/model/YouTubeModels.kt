@@ -175,3 +175,22 @@ data class YouTubeVideoStatistics(
     @Json(name = "likeCount") val likeCount: String? = null,
     @Json(name = "commentCount") val commentCount: String? = null
 )
+
+data class PlayerSettings(
+    val backgroundPlayEnabled: Boolean = true,
+    val pauseOnHeadphonesDisconnect: Boolean = true,
+    val brightnessGesture: Boolean = true,
+    val volumeGesture: Boolean = true,
+    val seekGesture: Boolean = true,
+    val doubleTapSeekSeconds: Int = 10,
+    val zoomToFill: Boolean = false,
+    val showSleepTimerButton: Boolean = true,
+    val showCastButton: Boolean = true,
+    val showSponsorBlockButton: Boolean = true,
+    val showPrevNextButtons: Boolean = true,
+    val showCommentsButton: Boolean = true,
+    val autoPipEnabled: Boolean = true,
+    val miniPlayerEnabled: Boolean = true,
+    val resumePlaybackEnabled: Boolean = true,
+    val sleepTimerMinutes: Int = 0 // 0 = off
+)

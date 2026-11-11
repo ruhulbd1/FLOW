@@ -9,7 +9,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,17 +29,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.DynamicFeed
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
@@ -50,12 +50,11 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -63,9 +62,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -93,6 +91,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.Channel
+import com.example.data.model.PlayerSettings
 import com.example.ui.theme.FlowRed
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -100,7 +100,7 @@ import com.example.ui.theme.FlowRed
 fun SettingsScreen(
     currentApiKey: String,
     channelIds: List<String>,
-    channels: List<com.example.data.model.Channel> = emptyList(),
+    channels: List<Channel> = emptyList(),
     themeMode: String,
     saveWatchHistory: Boolean,
     deepFlowMode: Boolean,
@@ -115,6 +115,10 @@ fun SettingsScreen(
     statusMessage: String?,
     isUpdateModalOpen: Boolean,
     backupExportJson: String?,
+    playerSettings: PlayerSettings = PlayerSettings(),
+    onUpdatePlayerSettings: (PlayerSettings) -> Unit = {},
+    sleepTimerRemainingSeconds: Int = 0,
+    onSetSleepTimer: (Int) -> Unit = {},
     onSaveApiSettings: (String, List<String>) -> Unit,
     onAddChannel: (String) -> Unit = {},
     onToggleChannelInFeed: (String, Boolean) -> Unit = { _, _ -> },
@@ -143,11 +147,27 @@ fun SettingsScreen(
     onCloseSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
+    // Sub-screen navigation state ("player", null)
+    var currentSubScreen by remember { mutableStateOf<String?>(null) }
+
+    // If player sub-screen is active, render PlayerSettingsScreen with BackHandler
+    if (currentSubScreen == "player") {
+        PlayerSettingsScreen(
+            playerSettings = playerSettings,
+            onUpdatePlayerSettings = onUpdatePlayerSettings,
+            sleepTimerRemainingSeconds = sleepTimerRemainingSeconds,
+            onSetSleepTimer = onSetSleepTimer,
+            onBack = { currentSubScreen = null }
+        )
+        return
+    }
+
     BackHandler {
         onCloseSettings()
     }
 
-    val context = LocalContext.current
     var settingsSearchQuery by remember { mutableStateOf("") }
 
     // Channel manager local state
@@ -157,12 +177,28 @@ fun SettingsScreen(
     var newTopicInput by remember { mutableStateOf("") }
 
     // Dialogs local state
+    var showQualityDialog by remember { mutableStateOf(false) }
+    var showFeedsDialog by remember { mutableStateOf(false) }
+    var showIntegrationsDialog by remember { mutableStateOf(false) }
+    var showBackupDialog by remember { mutableStateOf(false) }
+    var showHistoryDialog by remember { mutableStateOf(false) }
+    var showStorageDialog by remember { mutableStateOf(false) }
+    var showNotificationsDialog by remember { mutableStateOf(false) }
+    var showNetworkDialog by remember { mutableStateOf(false) }
+    var showWellbeingDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
+
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var showRestoreDialog by remember { mutableStateOf(false) }
     var restoreInputJson by remember { mutableStateOf("") }
-    var showQualityMenu by remember { mutableStateOf(false) }
-    var showLanguageMenu by remember { mutableStateOf(false) }
-    var showStorageMenu by remember { mutableStateOf(false) }
+
+    // Wellbeing state
+    var bedtimeReminder by remember { mutableStateOf(false) }
+    var breakReminder by remember { mutableStateOf(true) }
+
+    // Network state
+    var streamWifiOnly by remember { mutableStateOf(false) }
+    var lowDataMode by remember { mutableStateOf(false) }
 
     val presetChannels = listOf(
         Pair("UCVlUfN0sAILHcqgtWSxEPRg", "Deepto Natok"),
@@ -174,7 +210,6 @@ fun SettingsScreen(
         Pair("@AndroidDevelopers", "Android Devs")
     )
 
-    // Helper for real-time settings filtering
     fun matchesSearch(vararg terms: String): Boolean {
         if (settingsSearchQuery.isBlank()) return true
         val query = settingsSearchQuery.trim().lowercase()
@@ -186,7 +221,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // 1. Top Bar
+        // --- 1. Top Bar ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -211,7 +246,7 @@ fun SettingsScreen(
             )
         }
 
-        // 2. Search Settings Bar with Real-Time Filtering
+        // --- 2. Search Settings Bar ---
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -220,7 +255,7 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = settingsSearchQuery,
                 onValueChange = { settingsSearchQuery = it },
-                placeholder = { Text("Search settings (theme, history, quality, downloads...)", fontSize = 13.sp) },
+                placeholder = { Text("Search settings (playback, quality, channels...)", fontSize = 13.sp) },
                 singleLine = true,
                 leadingIcon = {
                     Icon(
@@ -250,17 +285,18 @@ fun SettingsScreen(
             )
         }
 
-        // 3. Scrollable Settings Categories
+        // --- 3. Scrollable Settings Categories ---
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
+
             // ==========================================
-            // CATEGORY: FLOW ENGINE
+            // 1. FLOW ENGINE
             // ==========================================
-            if (matchesSearch("flow", "engine", "deep flow", "recommendation", "history", "watch history", "interest", "blocked", "topic")) {
+            if (matchesSearch("flow engine", "deep flow", "recommendation", "sync", "interest", "blocked", "topics")) {
                 SettingsSectionHeader(title = "Flow Engine", icon = Icons.Default.AutoAwesome)
 
                 Card(
@@ -269,10 +305,10 @@ fun SettingsScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        // Deep Flow Mode Toggle
+                        // Deep Flow Mode
                         SettingsToggleRow(
                             title = "Deep Flow Mode",
-                            subtitle = "Distraction-free chronological mode. Pauses personalized algorithmic recommendations.",
+                            subtitle = "Distraction-free chronological mode. Pauses personalized algorithmic feeds.",
                             checked = deepFlowMode,
                             onCheckedChange = { onSetDeepFlowMode(it) },
                             testTag = "deep_flow_toggle"
@@ -280,38 +316,37 @@ fun SettingsScreen(
 
                         HorizontalDivider(
                             modifier = Modifier.padding(vertical = 12.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
                         )
 
-                        // Save to Watch History Toggle
+                        // Real-Time Sync
                         SettingsToggleRow(
-                            title = "Save to Watch History",
-                            subtitle = "When enabled, watched videos are logged to your Library history.",
-                            checked = saveWatchHistory,
-                            onCheckedChange = { onSetSaveWatchHistory(it) },
-                            testTag = "save_history_toggle"
+                            title = "Real-Time YouTube Auto-Sync",
+                            subtitle = "Background poll for new creator uploads every ${autoSyncIntervalSeconds}s.",
+                            checked = isAutoSyncEnabled,
+                            onCheckedChange = { onSetAutoSyncEnabled(it) },
+                            testTag = "auto_sync_toggle"
                         )
 
                         HorizontalDivider(
                             modifier = Modifier.padding(vertical = 12.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
                         )
 
-                        // Blocked Topics Management
+                        // Blocked Topics
                         Text(
                             text = "Interests & Blocked Topics",
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Videos containing blocked keywords will be automatically removed from feeds.",
+                            text = "Videos containing blocked keywords are excluded from your feed.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Blocked Topic Chips
                         if (blockedTopics.isNotEmpty()) {
                             FlowRow(
                                 modifier = Modifier.fillMaxWidth(),
@@ -342,7 +377,6 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                         }
 
-                        // Add Blocked Topic Input
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -350,21 +384,20 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = newTopicInput,
                                 onValueChange = { newTopicInput = it },
-                                placeholder = { Text("Block keyword (e.g. spoilers, horror)", fontSize = 12.sp) },
+                                placeholder = { Text("Add blocked topic (e.g. spoilers)", fontSize = 12.sp) },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(12.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Button(
                                 onClick = {
                                     if (newTopicInput.isNotBlank()) {
-                                        onAddBlockedTopic(newTopicInput.trim())
+                                        onAddBlockedTopic(newTopicInput)
                                         newTopicInput = ""
                                     }
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = FlowRed),
-                                shape = RoundedCornerShape(8.dp)
+                                colors = ButtonDefaults.buttonColors(containerColor = FlowRed)
                             ) {
                                 Text("Block")
                             }
@@ -376,10 +409,10 @@ fun SettingsScreen(
             }
 
             // ==========================================
-            // CATEGORY: LOOK & FEEL
+            // 2. LOOK & FEEL
             // ==========================================
-            if (matchesSearch("look", "feel", "appearance", "theme", "dark", "light", "system", "color", "language", "region")) {
-                SettingsSectionHeader(title = "Look & Feel", icon = Icons.Default.Palette)
+            if (matchesSearch("look & feel", "theme", "dark mode", "light mode", "appearance", "language", "region")) {
+                SettingsSectionHeader(title = "Look & feel", icon = Icons.Default.Palette)
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -388,636 +421,62 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Appearance Theme",
+                            text = "Theme Mode",
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        Text(
-                            text = "Choose your preferred viewing contrast. Changes apply in real-time.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Theme Mode Selector
+                        Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            listOf("System", "Dark", "Light").forEach { mode ->
-                                val isSelected = themeMode == mode
-                                Surface(
-                                    color = if (isSelected) FlowRed else MaterialTheme.colorScheme.background,
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { onSetThemeMode(mode) }
-                                        .testTag("theme_mode_$mode")
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
+                            listOf("Dark", "Light", "System").forEach { mode ->
+                                val isSelected = themeMode.equals(mode, ignoreCase = true)
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { onSetThemeMode(mode) },
+                                    label = { Text(mode) },
+                                    leadingIcon = {
                                         if (isSelected) {
-                                            Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                                         }
-                                        Text(
-                                            text = mode,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 14.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                        )
-
-                        // Language & Region Selector
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showLanguageMenu = true },
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Language, contentDescription = null, tint = FlowRed, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = "Language & Region",
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = languageRegion,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            Box {
-                                TextButton(onClick = { showLanguageMenu = true }) {
-                                    Text("Change", color = FlowRed, fontSize = 12.sp)
-                                }
-
-                                DropdownMenu(
-                                    expanded = showLanguageMenu,
-                                    onDismissRequest = { showLanguageMenu = false }
-                                ) {
-                                    listOf("English (US)", "Bengali (বাংলা)", "Global").forEach { lang ->
-                                        DropdownMenuItem(
-                                            text = { Text(lang) },
-                                            onClick = {
-                                                onSetLanguageRegion(lang)
-                                                showLanguageMenu = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-            }
-
-            // ==========================================
-            // CATEGORY: WATCHING & PLAYBACK
-            // ==========================================
-            if (matchesSearch("watching", "player", "playback", "autoplay", "quality", "1080p", "720p", "360p", "feeds", "channel", "api", "youtube")) {
-                SettingsSectionHeader(title = "Watching & Playback", icon = Icons.Default.PlayCircle)
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        // Autoplay Next Video
-                        SettingsToggleRow(
-                            title = "Autoplay Next Video",
-                            subtitle = "Automatically load the next video when playback finishes.",
-                            checked = autoplay,
-                            onCheckedChange = { onSetAutoplay(it) },
-                            testTag = "autoplay_toggle"
-                        )
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                        )
-
-                        // Video Quality Selector
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showQualityMenu = true },
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Streaming Quality Preference",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = FlowRed,
+                                        selectedLabelColor = Color.White
+                                    ),
+                                    modifier = Modifier.weight(1f)
                                 )
-                                Text(
-                                    text = "Current: $videoQuality",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            Box {
-                                TextButton(onClick = { showQualityMenu = true }) {
-                                    Text(videoQuality, color = FlowRed, fontWeight = FontWeight.Bold)
-                                }
-
-                                DropdownMenu(
-                                    expanded = showQualityMenu,
-                                    onDismissRequest = { showQualityMenu = false }
-                                ) {
-                                    listOf("1080p FHD", "720p HD", "360p Data Saver", "Auto").forEach { q ->
-                                        DropdownMenuItem(
-                                            text = { Text(q) },
-                                            onClick = {
-                                                onSetVideoQuality(q)
-                                                showQualityMenu = false
-                                            }
-                                        )
-                                    }
-                                }
                             }
                         }
 
                         HorizontalDivider(
                             modifier = Modifier.padding(vertical = 12.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
                         )
 
-                        // Feeds & Content Controls (Multi-Channel API Setup)
                         Text(
-                            text = "Feeds & YouTube Data API",
+                            text = "Language & Regional Content",
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        Text(
-                            text = "FLOW queries multiple YouTube channels in parallel and combines their latest uploads into your main chronological feed in real-time.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        OutlinedTextField(
-                            value = apiKeyInput,
-                            onValueChange = { apiKeyInput = it },
-                            label = { Text("YouTube Data API v3 Key") },
-                            placeholder = { Text("AIzaSy...") },
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("settings_api_key_field"),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Curated Presets
-                        Text(
-                            text = "Quick Presets:",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            presetChannels.forEach { preset ->
-                                val isPresent = channels.any { it.id == preset.first }
-                                Surface(
-                                    color = if (isPresent) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.background,
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, if (isPresent) FlowRed.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
-                                    modifier = Modifier.clickable {
-                                        onAddChannel(preset.first)
-                                    }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isPresent) Icons.Default.Check else Icons.Default.Add,
-                                            contentDescription = null,
-                                            tint = if (isPresent) FlowRed else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(11.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(3.dp))
-                                        Text(text = preset.second, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Active channel management list
-                        val channelListToDisplay = if (channels.isNotEmpty()) channels else activeChannels.map { com.example.data.model.Channel(id = it, name = it) }
-                        Text(
-                            text = "Configured Channels (${channelListToDisplay.size}):",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            channelListToDisplay.forEach { ch ->
-                                Surface(
-                                    color = MaterialTheme.colorScheme.background,
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = ch.name,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.onBackground
-                                            )
-                                            Text(
-                                                text = ch.id,
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = if (ch.isEnabledInFeed) "In Feed" else "Off",
-                                                fontSize = 10.sp,
-                                                color = if (ch.isEnabledInFeed) FlowRed else MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Switch(
-                                                checked = ch.isEnabledInFeed,
-                                                onCheckedChange = { isChecked ->
-                                                    onToggleChannelInFeed(ch.id, isChecked)
-                                                },
-                                                colors = SwitchDefaults.colors(
-                                                    checkedThumbColor = Color.White,
-                                                    checkedTrackColor = FlowRed
-                                                ),
-                                                modifier = Modifier.size(32.dp)
-                                            )
-
-                                            Spacer(modifier = Modifier.width(4.dp))
-
-                                            IconButton(
-                                                onClick = { onRemoveChannel(ch.id) },
-                                                modifier = Modifier.size(28.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Close,
-                                                    contentDescription = "Remove channel",
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Add channel input field
-                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedTextField(
-                                value = newChannelInput,
-                                onValueChange = { newChannelInput = it },
-                                placeholder = { Text("Channel ID (UC...) or @handle", fontSize = 11.sp) },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Button(
-                                onClick = {
-                                    if (newChannelInput.isNotBlank()) {
-                                        onAddChannel(newChannelInput.trim())
-                                        newChannelInput = ""
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = FlowRed),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Add")
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = {
-                                    val enabledIds = channelListToDisplay.filter { it.isEnabledInFeed }.map { it.id }
-                                    onSaveApiSettings(apiKeyInput, enabledIds)
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = FlowRed),
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Save Key & Sync Feed", fontSize = 11.sp)
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    apiKeyInput = ""
-                                    onResetChannelsToDefault()
-                                },
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Reset Defaults", fontSize = 11.sp)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Real-Time Auto-Sync Toggle Row
-                        SettingsToggleRow(
-                            title = "Real-Time Upload Sync",
-                            subtitle = "Automatically fetch and insert new uploads from subscribed channels into the main feed dynamically without manual refresh.",
-                            checked = isAutoSyncEnabled,
-                            onCheckedChange = { onSetAutoSyncEnabled(it) },
-                            testTag = "auto_sync_toggle"
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Polling Frequency Selector
-                        var showIntervalMenu by remember { mutableStateOf(false) }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showIntervalMenu = true },
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Auto-Sync Polling Interval",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Current: ${autoSyncIntervalSeconds}s",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            Box {
-                                TextButton(onClick = { showIntervalMenu = true }) {
-                                    Text("${autoSyncIntervalSeconds}s", color = FlowRed, fontWeight = FontWeight.Bold)
-                                }
-
-                                DropdownMenu(
-                                    expanded = showIntervalMenu,
-                                    onDismissRequest = { showIntervalMenu = false }
-                                ) {
-                                    listOf(15 to "15s (Instant)", 30 to "30s (Recommended)", 60 to "1 minute", 300 to "5 minutes").forEach { (sec, label) ->
-                                        DropdownMenuItem(
-                                            text = { Text(label) },
-                                            onClick = {
-                                                onSetAutoSyncInterval(sec)
-                                                showIntervalMenu = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Quick Test Actions: Check Now / Simulate
+                        Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            OutlinedButton(
-                                onClick = onCheckNewUploadsNow,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Check Uploads Now", fontSize = 11.sp)
-                            }
-
-                            Button(
-                                onClick = onSimulateNewUpload,
-                                colors = ButtonDefaults.buttonColors(containerColor = FlowRed),
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Simulate Upload", fontSize = 11.sp)
-                            }
-                        }
-
-                        if (!statusMessage.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(text = statusMessage, color = FlowRed, fontSize = 11.sp)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-            }
-
-            // ==========================================
-            // CATEGORY: YOUR DATA & PRIVACY
-            // ==========================================
-            if (matchesSearch("your data", "data", "history", "privacy", "clear", "cache", "backup", "restore", "downloads", "storage")) {
-                SettingsSectionHeader(title = "Your Data & Storage", icon = Icons.Default.Storage)
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        // Clear History & Cache Button
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "History & Privacy Cache",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface
+                            listOf("English (US)", "Bengali (BD)", "Global").forEach { lang ->
+                                val isSelected = languageRegion.equals(lang, ignoreCase = true)
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { onSetLanguageRegion(lang) },
+                                    label = { Text(lang, fontSize = 11.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = FlowRed,
+                                        selectedLabelColor = Color.White
+                                    ),
+                                    modifier = Modifier.weight(1f)
                                 )
-                                Text(
-                                    text = "Clear all watched video entries and local memory cache.",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            OutlinedButton(
-                                onClick = { showClearConfirmDialog = true },
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = FlowRed)
-                            ) {
-                                Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Clear", fontSize = 12.sp)
-                            }
-                        }
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                        )
-
-                        // Downloads Storage Location
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showStorageMenu = true },
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Downloads Storage Location",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = storageLocation,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            Box {
-                                TextButton(onClick = { showStorageMenu = true }) {
-                                    Text("Change", color = FlowRed, fontSize = 12.sp)
-                                }
-
-                                DropdownMenu(
-                                    expanded = showStorageMenu,
-                                    onDismissRequest = { showStorageMenu = false }
-                                ) {
-                                    listOf("Internal Storage", "SD Card (External)").forEach { loc ->
-                                        DropdownMenuItem(
-                                            text = { Text(loc) },
-                                            onClick = {
-                                                onSetStorageLocation(loc)
-                                                showStorageMenu = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                        )
-
-                        // Backup & Restore State
-                        Text(
-                            text = "Backup & Restore",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Export your channels, saved list, and configuration to JSON.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onExportBackup,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Export Backup", fontSize = 11.sp)
-                            }
-
-                            OutlinedButton(
-                                onClick = { showRestoreDialog = true },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Restore JSON", fontSize = 11.sp)
-                            }
-                        }
-
-                        // Display exported backup preview
-                        if (!backupExportJson.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Surface(
-                                color = MaterialTheme.colorScheme.background,
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text("Backup JSON generated:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = FlowRed)
-                                    Text(
-                                        text = backupExportJson.take(120) + "...",
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    TextButton(
-                                        onClick = {
-                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            val clip = ClipData.newPlainText("FlowBackup", backupExportJson)
-                                            clipboard.setPrimaryClip(clip)
-                                            Toast.makeText(context, "Backup JSON copied to clipboard!", Toast.LENGTH_SHORT).show()
-                                        }
-                                    ) {
-                                        Text("Copy Full JSON to Clipboard", fontSize = 11.sp, color = FlowRed)
-                                    }
-                                }
                             }
                         }
                     }
@@ -1027,77 +486,168 @@ fun SettingsScreen(
             }
 
             // ==========================================
-            // CATEGORY: SYSTEM & ABOUT
+            // 3. WATCHING
             // ==========================================
-            if (matchesSearch("system", "about", "notification", "update", "version", "check for updates")) {
-                SettingsSectionHeader(title = "System & About", icon = Icons.Default.Info)
+            if (matchesSearch("watching", "player & playback", "quality", "feeds", "content", "integrations", "api", "gestures", "background")) {
+                SettingsSectionHeader(title = "Watching", icon = Icons.Default.PlayCircle)
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        // Notifications Toggle
-                        SettingsToggleRow(
-                            title = "Notifications & Live Alerts",
-                            subtitle = "Receive notifications when subscribed channels upload or premiere.",
-                            checked = notificationsEnabled,
-                            onCheckedChange = { onSetNotificationsEnabled(it) },
-                            testTag = "notifications_toggle"
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+
+                        // Player & playback -> Opens PlayerSettingsScreen
+                        SettingsNavRow(
+                            title = "Player & playback",
+                            subtitle = "Background play, gestures, PiP, player buttons",
+                            icon = Icons.Default.PlayCircle,
+                            onClick = { currentSubScreen = "player" },
+                            testTag = "settings_player_playback_row",
+                            badgeText = "Max Player Engine"
                         )
 
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                        // Quality
+                        SettingsNavRow(
+                            title = "Quality",
+                            subtitle = "Default resolution: $videoQuality (Wi-Fi & Cellular)",
+                            icon = Icons.Default.HighQuality,
+                            onClick = { showQualityDialog = true },
+                            testTag = "settings_quality_row"
                         )
 
-                        // Check for updates
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "App Updates",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Current: FLOW v1.2.0 (Stable)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
 
-                            Button(
-                                onClick = onOpenUpdateModal,
-                                colors = ButtonDefaults.buttonColors(containerColor = FlowRed),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Check Updates", fontSize = 11.sp)
-                            }
-                        }
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                        // Feeds & content
+                        SettingsNavRow(
+                            title = "Feeds & content",
+                            subtitle = "Autoplay (${if (autoplay) "On" else "Off"}), filter shorts to dedicated tab",
+                            icon = Icons.Default.DynamicFeed,
+                            onClick = { showFeedsDialog = true },
+                            testTag = "settings_feeds_row"
                         )
 
-                        // Version & Credits
-                        Text(
-                            text = "FLOW for Android • Multi-Channel Edition",
-                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                        // Integrations
+                        SettingsNavRow(
+                            title = "Integrations & Channels",
+                            subtitle = "YouTube Data API v3 key, channels (${channelIds.size} active)",
+                            icon = Icons.Default.Key,
+                            onClick = { showIntegrationsDialog = true },
+                            testTag = "settings_integrations_row"
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Powered by Jetpack Compose & YouTube Data API v3. Built with clean architecture, offline caching, and real-time state management.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            // ==========================================
+            // 4. YOUR DATA
+            // ==========================================
+            if (matchesSearch("your data", "backup", "restore", "history", "privacy", "downloads", "storage")) {
+                SettingsSectionHeader(title = "Your data", icon = Icons.Default.Storage)
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+
+                        // Backup & restore
+                        SettingsNavRow(
+                            title = "Backup & restore",
+                            subtitle = "Export state JSON or restore playlists/subscriptions",
+                            icon = Icons.Default.CloudDownload,
+                            onClick = { showBackupDialog = true },
+                            testTag = "settings_backup_row"
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                        // History & privacy
+                        SettingsNavRow(
+                            title = "History & privacy",
+                            subtitle = "Watch history (${if (saveWatchHistory) "Active" else "Paused"}), clear cache",
+                            icon = Icons.Default.History,
+                            onClick = { showHistoryDialog = true },
+                            testTag = "settings_history_row"
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                        // Downloads & storage
+                        SettingsNavRow(
+                            title = "Downloads & storage",
+                            subtitle = "Location: $storageLocation • Gallery sync",
+                            icon = Icons.Default.Folder,
+                            onClick = { showStorageDialog = true },
+                            testTag = "settings_storage_row"
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            // ==========================================
+            // 5. SYSTEM
+            // ==========================================
+            if (matchesSearch("system", "notifications", "network", "wellbeing", "about")) {
+                SettingsSectionHeader(title = "System", icon = Icons.Default.Info)
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+
+                        // Notifications
+                        SettingsNavRow(
+                            title = "Notifications",
+                            subtitle = "Upload alerts (${if (notificationsEnabled) "Enabled" else "Off"})",
+                            icon = Icons.Default.Notifications,
+                            onClick = { showNotificationsDialog = true },
+                            testTag = "settings_notifications_row"
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                        // Network
+                        SettingsNavRow(
+                            title = "Network",
+                            subtitle = "Wi-Fi streaming, cellular data saver options",
+                            icon = Icons.Default.Wifi,
+                            onClick = { showNetworkDialog = true },
+                            testTag = "settings_network_row"
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                        // Wellbeing
+                        SettingsNavRow(
+                            title = "Wellbeing & Reminders",
+                            subtitle = "Bedtime reminders, take a break intervals",
+                            icon = Icons.Default.SelfImprovement,
+                            onClick = { showWellbeingDialog = true },
+                            testTag = "settings_wellbeing_row"
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                        // About
+                        SettingsNavRow(
+                            title = "About FLOW",
+                            subtitle = "Version 2.4.0 • Max Player Engine • Up to date",
+                            icon = Icons.Default.Info,
+                            onClick = { showAboutDialog = true },
+                            testTag = "settings_about_row"
                         )
                     }
                 }
@@ -1107,7 +657,417 @@ fun SettingsScreen(
         }
     }
 
-    // --- MODALS & DIALOGS ---
+    // ==========================================
+    // DETAILED MODALS & CONFIGURATION DIALOGS
+    // ==========================================
+
+    // Quality Dialog
+    if (showQualityDialog) {
+        AlertDialog(
+            onDismissRequest = { showQualityDialog = false },
+            title = { Text("Default Video Quality") },
+            text = {
+                Column {
+                    listOf("1080p FHD", "720p HD", "480p", "360p", "Auto").forEach { q ->
+                        val isSelected = videoQuality.contains(q.take(4))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSetVideoQuality(q)
+                                    showQualityDialog = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = isSelected, onClick = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = q, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showQualityDialog = false }) { Text("Close") }
+            }
+        )
+    }
+
+    // Feeds & Content Dialog
+    if (showFeedsDialog) {
+        AlertDialog(
+            onDismissRequest = { showFeedsDialog = false },
+            title = { Text("Feeds & Content Preferences") },
+            text = {
+                Column {
+                    SettingsToggleRow(
+                        title = "Autoplay videos",
+                        subtitle = "Play next related video automatically.",
+                        checked = autoplay,
+                        onCheckedChange = { onSetAutoplay(it) },
+                        testTag = "modal_autoplay_toggle"
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Shorts Routing: Enabled",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "All short portrait videos (\u2264 60s) are automatically filtered from Home and routed to the dedicated Shorts tab.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showFeedsDialog = false }) { Text("Done") }
+            }
+        )
+    }
+
+    // Integrations & Channels Dialog
+    if (showIntegrationsDialog) {
+        AlertDialog(
+            onDismissRequest = { showIntegrationsDialog = false },
+            title = { Text("Integrations & Channels") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        text = "YouTube Data API v3 Key",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = apiKeyInput,
+                        onValueChange = { apiKeyInput = it },
+                        placeholder = { Text("Enter your YouTube Data API Key", fontSize = 11.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "Add YouTube Channel / Handle",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = newChannelInput,
+                            onValueChange = { newChannelInput = it },
+                            placeholder = { Text("e.g. @CokeStudioBangla or ID", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Button(
+                            onClick = {
+                                if (newChannelInput.isNotBlank()) {
+                                    onAddChannel(newChannelInput)
+                                    newChannelInput = ""
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = FlowRed)
+                        ) {
+                            Text("Add")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            onResetChannelsToDefault()
+                            Toast.makeText(context, "Reset to default popular channels", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Reset Default Channels")
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onSaveApiSettings(apiKeyInput, activeChannels)
+                        showIntegrationsDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = FlowRed)
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showIntegrationsDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Backup & Restore Dialog
+    if (showBackupDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackupDialog = false },
+            title = { Text("Backup & Restore") },
+            text = {
+                Column {
+                    Text(
+                        text = "Export your app settings, playlists, and subscriptions to JSON or restore them anytime.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Button(
+                        onClick = {
+                            onExportBackup()
+                            Toast.makeText(context, "Backup JSON generated!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = FlowRed),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Export Backup JSON")
+                    }
+
+                    if (backupExportJson != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("FLOW_Backup", backupExportJson)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "Backup copied to clipboard!", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Copy Exported JSON")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            showBackupDialog = false
+                            showRestoreDialog = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Restore from JSON")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showBackupDialog = false }) { Text("Close") }
+            }
+        )
+    }
+
+    // History & Privacy Dialog
+    if (showHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showHistoryDialog = false },
+            title = { Text("History & Privacy") },
+            text = {
+                Column {
+                    SettingsToggleRow(
+                        title = "Save Watch History",
+                        subtitle = "When enabled, watched videos appear in Library history.",
+                        checked = saveWatchHistory,
+                        onCheckedChange = { onSetSaveWatchHistory(it) },
+                        testTag = "modal_history_toggle"
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = {
+                            showHistoryDialog = false
+                            showClearConfirmDialog = true
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Clear Watch History & Cache")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showHistoryDialog = false }) { Text("Done") }
+            }
+        )
+    }
+
+    // Storage Dialog
+    if (showStorageDialog) {
+        AlertDialog(
+            onDismissRequest = { showStorageDialog = false },
+            title = { Text("Downloads & Storage") },
+            text = {
+                Column {
+                    Text(
+                        text = "Preferred Storage Location",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    listOf("Internal Storage", "SD Card").forEach { loc ->
+                        val isSelected = storageLocation.equals(loc, ignoreCase = true)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSetStorageLocation(loc)
+                                    showStorageDialog = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = isSelected, onClick = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = loc, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Gallery Sync: Offline videos are saved directly to device Gallery/Movies using MediaStore.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showStorageDialog = false }) { Text("Close") }
+            }
+        )
+    }
+
+    // Notifications Dialog
+    if (showNotificationsDialog) {
+        AlertDialog(
+            onDismissRequest = { showNotificationsDialog = false },
+            title = { Text("Notifications") },
+            text = {
+                Column {
+                    SettingsToggleRow(
+                        title = "Creator Upload Alerts",
+                        subtitle = "Receive notifications when subscribed channels release new videos.",
+                        checked = notificationsEnabled,
+                        onCheckedChange = { onSetNotificationsEnabled(it) },
+                        testTag = "modal_notifications_toggle"
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showNotificationsDialog = false }) { Text("Done") }
+            }
+        )
+    }
+
+    // Network Dialog
+    if (showNetworkDialog) {
+        AlertDialog(
+            onDismissRequest = { showNetworkDialog = false },
+            title = { Text("Network & Data Usage") },
+            text = {
+                Column {
+                    SettingsToggleRow(
+                        title = "Stream on Wi-Fi only",
+                        subtitle = "Pause high-res streaming when using cellular mobile data.",
+                        checked = streamWifiOnly,
+                        onCheckedChange = { streamWifiOnly = it },
+                        testTag = "wifi_only_toggle"
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    SettingsToggleRow(
+                        title = "Mobile Data Saver",
+                        subtitle = "Automatically stream at 480p on metered networks.",
+                        checked = lowDataMode,
+                        onCheckedChange = { lowDataMode = it },
+                        testTag = "data_saver_toggle"
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showNetworkDialog = false }) { Text("Done") }
+            }
+        )
+    }
+
+    // Wellbeing Dialog
+    if (showWellbeingDialog) {
+        AlertDialog(
+            onDismissRequest = { showWellbeingDialog = false },
+            title = { Text("Wellbeing & Reminders") },
+            text = {
+                Column {
+                    SettingsToggleRow(
+                        title = "Bedtime Reminder",
+                        subtitle = "Show prompt to pause watching at 11:00 PM.",
+                        checked = bedtimeReminder,
+                        onCheckedChange = { bedtimeReminder = it },
+                        testTag = "bedtime_reminder_toggle"
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    SettingsToggleRow(
+                        title = "Remind me to take a break",
+                        subtitle = "Prompt a break after 60 minutes of continuous playback.",
+                        checked = breakReminder,
+                        onCheckedChange = { breakReminder = it },
+                        testTag = "break_reminder_toggle"
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showWellbeingDialog = false }) { Text("Done") }
+            }
+        )
+    }
+
+    // About Dialog
+    if (showAboutDialog) {
+        AlertDialog(
+            onDismissRequest = { showAboutDialog = false },
+            icon = {
+                Icon(Icons.Default.PlayCircle, contentDescription = null, tint = FlowRed, modifier = Modifier.size(40.dp))
+            },
+            title = { Text("FLOW 2.4.0") },
+            text = {
+                Column {
+                    Text(
+                        text = "High-Performance YouTube Streaming & Media Engine",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "• Max Player Background Audio Service\n• WAKE_LOCK Lockscreen Playback\n• Real-Time YouTube RSS & API v3 Sync\n• High-Fidelity Jetpack Compose Architecture\n• MediaStore Offline Download Engine",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showAboutDialog = false
+                        onOpenUpdateModal()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = FlowRed)
+                ) {
+                    Text("Check Updates")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAboutDialog = false }) { Text("Close") }
+            }
+        )
+    }
 
     // Clear Cache Confirmation Dialog
     if (showClearConfirmDialog) {
@@ -1183,9 +1143,9 @@ fun SettingsScreen(
             title = { Text("FLOW is Up to Date") },
             text = {
                 Column {
-                    Text("Version: 1.2.0 (Build 20261105)")
+                    Text("Version: 2.4.0 (Build 20261111)")
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Status: You are running the latest stable release of FLOW. All YouTube Data API and streaming components are up to date.")
+                    Text("Status: Running latest stable release. Max Player Background Service, gestures, and PiP controls active.")
                 }
             },
             confirmButton = {
@@ -1217,6 +1177,75 @@ private fun SettingsSectionHeader(title: String, icon: ImageVector) {
             text = title,
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onBackground
+        )
+    }
+}
+
+@Composable
+private fun SettingsNavRow(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    testTag: String,
+    badgeText: String? = null
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp)
+            .testTag(testTag),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .background(FlowRed.copy(alpha = 0.12f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = FlowRed,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (badgeText != null) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        color = FlowRed.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = FlowRed,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier.size(14.dp)
         )
     }
 }
