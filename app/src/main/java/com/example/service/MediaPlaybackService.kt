@@ -13,31 +13,36 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Icon as AndroidIcon
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaMetadata
-import android.media.MediaPlayer
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
-import androidx.core.app.NotificationCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import coil.Coil
 import coil.request.ImageRequest
 import com.example.MainActivity
 import com.example.R
-import com.example.data.model.VideoItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * Foreground Service for persistent background and lock-screen audio playback (Like Max Player).
+ * Directly drives the shared ExoPlayer engine and holds a PARTIAL_WAKE_LOCK to prevent
+ * playback from stopping when the user turns off the screen or backgrounds the app.
+ */
 class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener {
 
     companion object {
@@ -61,7 +66,6 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
-    private var progressTrackingJob: Job? = null
 
     private lateinit var mediaSession: MediaSession
     private lateinit var audioManager: AudioManager
@@ -70,6 +74,19 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
     private var audioFocusRequest: AudioFocusRequest? = null
     private var isBackgroundPlayEnabled = true
     private var isReceiverRegistered = false
+
+    private lateinit var sharedPlayer: ExoPlayer
+    private var isPlaying = false
+    private var currentPositionMs = 0L
+    private var durationMs = 38 * 60 * 1000L
+
+    // Current metadata
+    private var currentVideoId: String = ""
+    private var currentStreamUrl: String = ""
+    private var currentTitle: String = "FLOW Video"
+    private var currentChannel: String = "Creator"
+    private var currentThumbnailUrl: String = ""
+    private var currentThumbnailBitmap: Bitmap? = null
 
     private val noisyReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -80,20 +97,6 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
             }
         }
     }
-
-    // Audio Engine
-    private var mediaPlayer: MediaPlayer? = null
-    private var isPlaying = false
-    private var currentPositionMs = 0L
-    private var durationMs = 38 * 60 * 1000L // Default duration ~38 mins
-
-    // Current metadata
-    private var currentVideoId: String = ""
-    private var currentStreamUrl: String = ""
-    private var currentTitle: String = "FLOW Video"
-    private var currentChannel: String = "Creator"
-    private var currentThumbnailUrl: String = ""
-    private var currentThumbnailBitmap: Bitmap? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -112,7 +115,39 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
 
         createNotificationChannel()
         initializeMediaSession()
-        initializeMediaPlayer()
+
+        // Bind directly to the unified ExoPlayer
+        sharedPlayer = MediaPlaybackManager.getSharedExoPlayer(applicationContext)
+        sharedPlayer.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+                updatePlaybackState()
+                if (playing) {
+                    acquireWakeLock()
+                    val notification = buildMediaNotification()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                    } else {
+                        startForeground(NOTIFICATION_ID, notification)
+                    }
+                } else {
+                    releaseWakeLock()
+                    val notification = buildMediaNotification()
+                    val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    notificationManager.notify(NOTIFICATION_ID, notification)
+                }
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) {
+                    val dur = sharedPlayer.duration
+                    if (dur > 0L) {
+                        durationMs = dur
+                        updateMetadata()
+                    }
+                }
+            }
+        })
     }
 
     private fun createNotificationChannel() {
@@ -156,95 +191,11 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
 
                 override fun onSeekTo(pos: Long) {
                     currentPositionMs = pos
-                    mediaPlayer?.let { player ->
-                        try {
-                            if (player.isPlaying) {
-                                player.seekTo((pos % (player.duration.coerceAtLeast(1))).toInt())
-                            }
-                        } catch (_: Exception) {}
-                    }
+                    sharedPlayer.seekTo(pos)
                     updatePlaybackState()
                 }
             })
             isActive = true
-        }
-    }
-
-    private fun initializeMediaPlayer() {
-        try {
-            mediaPlayer = MediaPlayer().apply {
-                setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
-                val audioAttributes = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-                setAudioAttributes(audioAttributes)
-                isLooping = true
-            }
-        } catch (e: Exception) {
-            // Handle gracefully
-        }
-    }
-
-    private fun getStreamUrlForVideo(videoId: String): String {
-        return when (videoId) {
-            "music1" -> "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-            "music2" -> "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
-            "music3" -> "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"
-            "music4" -> "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"
-            else -> {
-                val pool = listOf(
-                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-                    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"
-                )
-                val idx = Math.abs(videoId.hashCode()) % pool.size
-                pool[idx]
-            }
-        }
-    }
-
-    private fun startMediaPlayerPlayback(isNewTrack: Boolean) {
-        try {
-            if (isNewTrack || mediaPlayer == null) {
-                try {
-                    mediaPlayer?.stop()
-                    mediaPlayer?.release()
-                } catch (_: Exception) {}
-
-                mediaPlayer = MediaPlayer().apply {
-                    setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
-                    val audioAttributes = AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build()
-                    setAudioAttributes(audioAttributes)
-                    isLooping = true
-                    val streamUrl = currentStreamUrl.ifBlank { getStreamUrlForVideo(currentVideoId) }
-                    setDataSource(streamUrl)
-                    setOnPreparedListener { player ->
-                        if (isPlaying) {
-                            if (currentPositionMs > 0 && currentPositionMs < player.duration) {
-                                player.seekTo(currentPositionMs.toInt())
-                            }
-                            player.start()
-                        }
-                    }
-                    setOnErrorListener { _, _, _ ->
-                        true
-                    }
-                    prepareAsync()
-                }
-            } else {
-                mediaPlayer?.let { player ->
-                    if (!player.isPlaying && isPlaying) {
-                        player.start()
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            // Gracefully ignore audio setup issues
         }
     }
 
@@ -265,11 +216,10 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
 
         val isNewTrack = (videoId != currentVideoId && videoId.isNotBlank()) ||
                 (streamUrlExtra.isNotBlank() && streamUrlExtra != currentStreamUrl)
+
         if (isNewTrack) {
             currentVideoId = videoId
-            if (streamUrlExtra.isNotBlank()) {
-                currentStreamUrl = streamUrlExtra
-            }
+            currentStreamUrl = streamUrlExtra.ifBlank { MediaPlaybackManager.resolveStreamUrl(videoId) }
             currentTitle = title
             currentChannel = channel
             currentThumbnailUrl = thumbUrl
@@ -278,11 +228,22 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
             loadThumbnailBitmap(thumbUrl)
         }
 
+        val isDifferentFromPlayer = sharedPlayer.currentMediaItem?.mediaId != currentVideoId
+        if (isNewTrack && (isDifferentFromPlayer || sharedPlayer.playbackState == Player.STATE_IDLE || sharedPlayer.playbackState == Player.STATE_ENDED)) {
+            // Prepare the shared ExoPlayer for the new track
+            val mediaItem = MediaItem.Builder()
+                .setUri(Uri.parse(currentStreamUrl))
+                .setMediaId(currentVideoId)
+                .build()
+            sharedPlayer.setMediaItem(mediaItem)
+            sharedPlayer.prepare()
+        }
+
         when (action) {
             ACTION_PLAY -> handlePlay(isNewTrack)
             ACTION_PAUSE -> handlePause()
             ACTION_PLAY_PAUSE -> {
-                if (isPlaying) handlePause() else handlePlay(isNewTrack)
+                if (sharedPlayer.isPlaying) handlePause() else handlePlay(isNewTrack)
             }
             ACTION_NEXT -> MediaPlaybackManager.skipNext(applicationContext)
             ACTION_PREVIOUS -> MediaPlaybackManager.skipPrevious(applicationContext)
@@ -314,14 +275,17 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         isPlaying = true
         acquireWakeLock()
 
-        // Active background audio playback engine: plays audio stream through MediaPlayer with PARTIAL_WAKE_LOCK
-        startMediaPlayerPlayback(isNewTrack)
+        sharedPlayer.playWhenReady = true
+        if (sharedPlayer.playbackState == Player.STATE_IDLE || sharedPlayer.playbackState == Player.STATE_ENDED) {
+            sharedPlayer.prepare()
+        }
+        if (!sharedPlayer.isPlaying) {
+            sharedPlayer.play()
+        }
 
-        // Update MediaSession state
         updatePlaybackState()
         updateMetadata()
 
-        // Start Foreground Notification
         val notification = buildMediaNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
@@ -329,25 +293,18 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // Notify MediaPlaybackManager
-        MediaPlaybackManager.updatePlaybackState(isPlaying = true, positionMs = currentPositionMs, durationMs = durationMs)
-
-        // Start background position ticker
-        startProgressTracking()
+        MediaPlaybackManager.updatePlaybackState(isPlaying = true, positionMs = sharedPlayer.currentPosition, durationMs = durationMs)
     }
 
     private fun handlePause() {
         isPlaying = false
         releaseWakeLock()
 
-        try {
-            if (mediaPlayer?.isPlaying == true) {
-                mediaPlayer?.pause()
-            }
-        } catch (_: Exception) {}
+        if (sharedPlayer.isPlaying) {
+            sharedPlayer.pause()
+        }
 
         updatePlaybackState()
-        stopProgressTracking()
 
         val notification = buildMediaNotification()
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -360,23 +317,15 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
             stopForeground(false)
         }
 
-        MediaPlaybackManager.updatePlaybackState(isPlaying = false, positionMs = currentPositionMs, durationMs = durationMs)
+        MediaPlaybackManager.updatePlaybackState(isPlaying = false, positionMs = sharedPlayer.currentPosition, durationMs = durationMs)
     }
 
     private fun handleStop() {
         isPlaying = false
         releaseWakeLock()
         abandonAudioFocus()
-        stopProgressTracking()
 
-        try {
-            if (mediaPlayer?.isPlaying == true) {
-                mediaPlayer?.stop()
-            }
-            mediaPlayer?.release()
-            mediaPlayer = null
-        } catch (_: Exception) {}
-
+        sharedPlayer.stop()
         updatePlaybackState(isStopped = true)
         mediaSession.isActive = false
 
@@ -391,34 +340,13 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         stopSelf()
     }
 
-    private fun startProgressTracking() {
-        progressTrackingJob?.cancel()
-        progressTrackingJob = serviceScope.launch {
-            while (isActive && isPlaying) {
-                delay(1000)
-                currentPositionMs += 1000
-                if (currentPositionMs >= durationMs) {
-                    currentPositionMs = 0L
-                }
-                MediaPlaybackManager.updatePlaybackState(isPlaying = true, positionMs = currentPositionMs, durationMs = durationMs)
-            }
-        }
-    }
-
-    private fun stopProgressTracking() {
-        progressTrackingJob?.cancel()
-        progressTrackingJob = null
-    }
-
     private fun acquireWakeLock() {
         if (!isBackgroundPlayEnabled) return
         try {
             if (wakeLock?.isHeld != true) {
                 wakeLock?.acquire(4 * 60 * 60 * 1000L) // 4 hours timeout safety
             }
-        } catch (e: Exception) {
-            // Ignore
-        }
+        } catch (_: Exception) {}
     }
 
     private fun releaseWakeLock() {
@@ -426,12 +354,9 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
             if (wakeLock?.isHeld == true) {
                 wakeLock?.release()
             }
-        } catch (e: Exception) {
-            // Ignore
-        }
+        } catch (_: Exception) {}
     }
 
-    // --- AUDIO FOCUS MANAGEMENT ---
     private fun requestAudioFocus(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val audioAttributes = AudioAttributes.Builder()
@@ -468,20 +393,10 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
 
     override fun onAudioFocusChange(focusChange: Int) {
         when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS -> {
-                // Permanent loss of audio focus (e.g. another media player took over)
-                handlePause()
-            }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                // Temporary loss (e.g. phone call, GPS navigation prompt)
-                handlePause()
-            }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                // Lower volume or pause
-                handlePause()
-            }
+            AudioManager.AUDIOFOCUS_LOSS -> handlePause()
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> handlePause()
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> handlePause()
             AudioManager.AUDIOFOCUS_GAIN -> {
-                // Regained audio focus
                 if (!isPlaying) {
                     handlePlay()
                 }
@@ -489,7 +404,6 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         }
     }
 
-    // --- MEDIASESSION STATE & METADATA ---
     private fun updatePlaybackState(isStopped: Boolean = false) {
         val state = when {
             isStopped -> PlaybackState.STATE_STOPPED
@@ -498,7 +412,7 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         }
 
         val playbackState = PlaybackState.Builder()
-            .setState(state, currentPositionMs, 1.0f)
+            .setState(state, sharedPlayer.currentPosition, 1.0f)
             .setActions(
                 PlaybackState.ACTION_PLAY or
                         PlaybackState.ACTION_PAUSE or
@@ -529,7 +443,6 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
         mediaSession.setMetadata(metadataBuilder.build())
     }
 
-    // --- NOTIFICATION WITH MEDIASTYLE & LOCK SCREEN CONTROLS ---
     private fun buildMediaNotification(): Notification {
         val openAppIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -541,7 +454,6 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // PendingIntents for Media Actions
         val prevIntent = PendingIntent.getService(
             this, 1,
             Intent(this, MediaPlaybackService::class.java).setAction(ACTION_PREVIOUS),
@@ -585,10 +497,34 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
                     .setMediaSession(mediaSession.sessionToken)
                     .setShowActionsInCompactView(0, 1, 2)
             )
-            .addAction(Notification.Action.Builder(R.drawable.ic_skip_previous, "Previous", prevIntent).build())
-            .addAction(Notification.Action.Builder(playPauseIcon, playPauseTitle, playPauseIntent).build())
-            .addAction(Notification.Action.Builder(R.drawable.ic_skip_next, "Next", nextIntent).build())
-            .addAction(Notification.Action.Builder(R.drawable.ic_stop, "Stop", stopIntent).build())
+            .addAction(
+                Notification.Action.Builder(
+                    AndroidIcon.createWithResource(this, R.drawable.ic_skip_previous),
+                    "Previous",
+                    prevIntent
+                ).build()
+            )
+            .addAction(
+                Notification.Action.Builder(
+                    AndroidIcon.createWithResource(this, playPauseIcon),
+                    playPauseTitle,
+                    playPauseIntent
+                ).build()
+            )
+            .addAction(
+                Notification.Action.Builder(
+                    AndroidIcon.createWithResource(this, R.drawable.ic_skip_next),
+                    "Next",
+                    nextIntent
+                ).build()
+            )
+            .addAction(
+                Notification.Action.Builder(
+                    AndroidIcon.createWithResource(this, R.drawable.ic_stop),
+                    "Stop",
+                    stopIntent
+                ).build()
+            )
             .build()
     }
 
@@ -604,7 +540,7 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
                 val imageLoader = Coil.imageLoader(applicationContext)
                 val request = ImageRequest.Builder(applicationContext)
                     .data(url)
-                    .allowHardware(false) // Needed for Notification Large Icon
+                    .allowHardware(false)
                     .build()
 
                 val result = withContext(Dispatchers.IO) {
@@ -624,7 +560,7 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
                     val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     notificationManager.notify(NOTIFICATION_ID, notification)
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 currentThumbnailBitmap = createFallbackArtBitmap(currentTitle)
                 updateMetadata()
             }
@@ -634,7 +570,7 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
     private fun createFallbackArtBitmap(title: String): Bitmap {
         val bitmap = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        canvas.drawColor(Color.parseColor("#E50914")) // FLOW Brand Red
+        canvas.drawColor(Color.parseColor("#E50914"))
 
         val paint = Paint().apply {
             color = Color.WHITE
@@ -661,11 +597,8 @@ class MediaPlaybackService : Service(), AudioManager.OnAudioFocusChangeListener 
                 unregisterReceiver(noisyReceiver)
             } catch (_: Exception) {}
         }
-        stopProgressTracking()
         releaseWakeLock()
         abandonAudioFocus()
-        mediaPlayer?.release()
-        mediaPlayer = null
         mediaSession.release()
     }
 }

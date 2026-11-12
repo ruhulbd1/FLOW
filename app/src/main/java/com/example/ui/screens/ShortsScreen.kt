@@ -1,12 +1,8 @@
 package com.example.ui.screens
 
-import android.annotation.SuppressLint
 import android.content.Intent
+import android.net.Uri
 import android.view.ViewGroup
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -15,7 +11,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,21 +27,24 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.VerticalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Comment
+import androidx.compose.material.icons.automirrored.filled.Comment
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,9 +54,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,7 +67,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -74,13 +74,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.example.data.model.Comment
 import com.example.data.model.VideoItem
+import com.example.service.MediaPlaybackManager
 import com.example.ui.theme.FlowRed
+import kotlinx.coroutines.launch
 
-@SuppressLint("SetJavaScriptEnabled")
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Dedicated Shorts Screen featuring native Media3 ExoPlayer auto-play
+ * inside a smooth VerticalPager. Videos start playing instantly upon scrolling into view.
+ */
+@OptIn(UnstableApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ShortsScreen(
     shorts: List<VideoItem>,
@@ -99,7 +112,9 @@ fun ShortsScreen(
 ) {
     if (shorts.isEmpty()) {
         Box(
-            modifier = modifier.fillMaxSize().background(Color.Black),
+            modifier = modifier
+                .fillMaxSize()
+                .background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
             Text("No Shorts available", color = Color.White)
@@ -107,30 +122,68 @@ fun ShortsScreen(
         return
     }
 
-    val currentShort = shorts.getOrElse(currentIndex) { shorts.first() }
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var showCommentsSheet by remember { mutableStateOf(false) }
     var commentInput by remember { mutableStateOf("") }
     val sheetState = rememberModalBottomSheetState()
 
-    val resolvedVideoId = remember(currentShort.id, currentShort.thumbnailUrl) {
-        if (currentShort.id.length == 11 && !currentShort.id.startsWith("short") && !currentShort.id.startsWith("demo")) {
-            currentShort.id
-        } else if (currentShort.thumbnailUrl.contains("/vi/")) {
-            val candidate = currentShort.thumbnailUrl.substringAfter("/vi/").substringBefore("/")
-            if (candidate.length == 11) candidate else currentShort.id
-        } else {
-            when (currentShort.id) {
-                "short1" -> "DfanjKOWW_k"
-                "short2" -> "LGsd_mH1c6k"
-                "short3" -> "ridzjSgy1bc"
-                "short4" -> "rsOiZE19RVo"
-                else -> currentShort.id
+    val pagerState = rememberPagerState(
+        initialPage = currentIndex.coerceIn(0, shorts.size - 1)
+    ) {
+        shorts.size
+    }
+
+    // Dedicated Native ExoPlayer for Shorts auto-play
+    val shortsPlayer = remember(context) {
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build()
+
+        ExoPlayer.Builder(context.applicationContext)
+            .setAudioAttributes(audioAttributes, true)
+            .build().apply {
+                repeatMode = Player.REPEAT_MODE_ONE // Loop short video continuously
+                playWhenReady = true
             }
+    }
+
+    var isShortBuffering by remember { mutableStateOf(false) }
+
+    DisposableEffect(shortsPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                isShortBuffering = (state == Player.STATE_BUFFERING)
+            }
+        }
+        shortsPlayer.addListener(listener)
+        onDispose {
+            shortsPlayer.removeListener(listener)
+            shortsPlayer.release()
         }
     }
 
-    // Rotating music disc animation
+    // Auto-prepare and play the active Short video upon scrolling into view
+    LaunchedEffect(pagerState.currentPage, isPlaying) {
+        val activeShort = shorts.getOrElse(pagerState.currentPage) { shorts.first() }
+        val streamUrl = if (activeShort.streamUrl.isNotBlank()) {
+            activeShort.streamUrl
+        } else {
+            MediaPlaybackManager.resolveStreamUrl(activeShort.id)
+        }
+
+        val mediaItem = MediaItem.fromUri(Uri.parse(streamUrl))
+        shortsPlayer.setMediaItem(mediaItem)
+        shortsPlayer.prepare()
+        if (isPlaying) {
+            shortsPlayer.play()
+        } else {
+            shortsPlayer.pause()
+        }
+    }
+
+    // Spinning disc animation
     val infiniteTransition = rememberInfiniteTransition(label = "disc_spin")
     val discRotation by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -142,88 +195,81 @@ fun ShortsScreen(
         label = "rotation"
     )
 
+    val currentShort = shorts.getOrElse(pagerState.currentPage) { shorts.first() }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) {
-                detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount < -35) {
-                        onNextShort()
-                    } else if (dragAmount > 35) {
-                        onPrevShort()
-                    }
-                }
-            }
     ) {
-        // Fullscreen Active Short Video Player (Autoplay & Continuous playback)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable { onTogglePlay() }
-        ) {
-            // Immediate backdrop thumbnail preview
-            AsyncImage(
-                model = currentShort.thumbnailUrl,
-                contentDescription = currentShort.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+        // Vertical Pager with native video surface per item
+        VerticalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            val shortItem = shorts[page]
+            val isCurrentPage = (page == pagerState.currentPage)
 
-            // Autoplaying Fullscreen Video View
-            if (isPlaying) {
-                AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable { onTogglePlay() }
+            ) {
+                if (isCurrentPage) {
+                    AndroidView(
+                        factory = { ctx ->
+                            PlayerView(ctx).apply {
+                                player = shortsPlayer
+                                useController = false
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                layoutParams = ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT
+                                )
+                            }
+                        },
+                        update = { playerView ->
+                            if (playerView.player != shortsPlayer) {
+                                playerView.player = shortsPlayer
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    if (isShortBuffering) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.25f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = FlowRed,
+                                strokeWidth = 3.dp,
+                                modifier = Modifier.size(44.dp)
                             )
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.mediaPlaybackRequiresUserGesture = false
-                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                            settings.cacheMode = WebSettings.LOAD_DEFAULT
-                            webChromeClient = WebChromeClient()
-                            webViewClient = WebViewClient()
-                            setBackgroundColor(android.graphics.Color.BLACK)
                         }
-                    },
-                    update = { webView ->
-                        val embedHtml = """
-                            <!DOCTYPE html>
-                            <html>
-                            <head>
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                                <style>
-                                    body, html { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; }
-                                    iframe { width:100%; height:100%; border:none; object-fit: cover; }
-                                </style>
-                            </head>
-                            <body>
-                                <iframe 
-                                    src="https://www.youtube-nocookie.com/embed/${resolvedVideoId}?autoplay=1&playsinline=1&controls=0&loop=1&playlist=${resolvedVideoId}&rel=0&modestbranding=1"
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                    allowfullscreen>
-                                </iframe>
-                            </body>
-                            </html>
-                        """.trimIndent()
-                        webView.loadDataWithBaseURL("https://www.youtube-nocookie.com", embedHtml, "text/html", "UTF-8", null)
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+                    }
+                } else {
+                    // Preview thumbnail for non-active pages
+                    AsyncImage(
+                        model = shortItem.thumbnailUrl,
+                        contentDescription = shortItem.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
 
-        // Top & Bottom shadow gradients for readability
+        // Gradient Shadows for UI Readability
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = 0.45f),
+                            Color.Black.copy(alpha = 0.5f),
                             Color.Transparent,
                             Color.Transparent,
                             Color.Black.copy(alpha = 0.85f)
@@ -232,12 +278,12 @@ fun ShortsScreen(
                 )
         )
 
-        // Top Bar: "Shorts" label and navigation buttons
+        // Top Navigation Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -250,7 +296,15 @@ fun ShortsScreen(
 
             Row {
                 IconButton(
-                    onClick = onPrevShort,
+                    onClick = {
+                        if (pagerState.currentPage > 0) {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                            }
+                        } else {
+                            onPrevShort()
+                        }
+                    },
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
@@ -261,7 +315,15 @@ fun ShortsScreen(
                 }
 
                 IconButton(
-                    onClick = onNextShort,
+                    onClick = {
+                        if (pagerState.currentPage < shorts.size - 1) {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                            }
+                        } else {
+                            onNextShort()
+                        }
+                    },
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
@@ -273,13 +335,13 @@ fun ShortsScreen(
             }
         }
 
-        // Center pause overlay indicator
+        // Center Pause Indicator
         if (!isPlaying) {
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .size(68.dp)
-                    .background(Color.Black.copy(alpha = 0.6f), CircleShape),
+                    .background(Color.Black.copy(alpha = 0.65f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -291,14 +353,14 @@ fun ShortsScreen(
             }
         }
 
-        // Bottom Content: Channel Details, Caption, Sound tag
+        // Bottom Left Content: Channel Details, Title, Audio Indicator
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth(0.78f)
-                .padding(start = 16.dp, bottom = 24.dp)
+                .navigationBarsPadding()
+                .padding(start = 16.dp, bottom = 72.dp)
         ) {
-            // Channel row
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -319,7 +381,6 @@ fun ShortsScreen(
                     fontSize = 14.sp
                 )
 
-                // Subscribe Pill
                 Surface(
                     color = if (isSubscribed) Color.White.copy(alpha = 0.25f) else FlowRed,
                     shape = RoundedCornerShape(16.dp),
@@ -337,18 +398,16 @@ fun ShortsScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Caption
             Text(
                 text = currentShort.title,
                 color = Color.White,
                 fontSize = 13.sp,
-                maxLines = 3,
+                maxLines = 2,
                 lineHeight = 18.sp
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Audio track indicator
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.MusicNote,
@@ -365,11 +424,12 @@ fun ShortsScreen(
             }
         }
 
-        // Right Action Column (Like, Dislike, Comment, Share, Music Disc)
+        // Right Side Actions (Like, Dislike, Comment, Share, Music Disc)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 12.dp, bottom = 24.dp),
+                .navigationBarsPadding()
+                .padding(end = 12.dp, bottom = 72.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -379,7 +439,7 @@ fun ShortsScreen(
                     onClick = { onToggleLike(currentShort) },
                     modifier = Modifier
                         .size(46.dp)
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
                         .testTag("shorts_like_button")
                 ) {
                     Icon(
@@ -403,7 +463,7 @@ fun ShortsScreen(
                     onClick = {},
                     modifier = Modifier
                         .size(46.dp)
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.Default.ThumbDown,
@@ -421,17 +481,17 @@ fun ShortsScreen(
                     onClick = { showCommentsSheet = true },
                     modifier = Modifier
                         .size(46.dp)
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
                         .testTag("shorts_comment_button")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Comment,
+                        imageVector = Icons.AutoMirrored.Filled.Comment,
                         contentDescription = "Comments",
                         tint = Color.White,
                         modifier = Modifier.size(24.dp)
                     )
                 }
-                Text("${comments.size * 340}", color = Color.White, fontSize = 12.sp)
+                Text("${comments.size.coerceAtLeast(1) * 340}", color = Color.White, fontSize = 12.sp)
             }
 
             // Share
@@ -440,14 +500,14 @@ fun ShortsScreen(
                     onClick = {
                         val sendIntent = Intent().apply {
                             action = Intent.ACTION_SEND
-                            putExtra(Intent.EXTRA_TEXT, "Watch this short on FLOW: https://youtu.be/${currentShort.id}")
+                            putExtra(Intent.EXTRA_TEXT, "Watch '${currentShort.title}' on FLOW: https://youtu.be/${currentShort.id}")
                             type = "text/plain"
                         }
                         context.startActivity(Intent.createChooser(sendIntent, "Share Short"))
                     },
                     modifier = Modifier
                         .size(46.dp)
-                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Share,
@@ -484,18 +544,19 @@ fun ShortsScreen(
     if (showCommentsSheet) {
         ModalBottomSheet(
             onDismissRequest = { showCommentsSheet = false },
-            sheetState = sheetState
+            sheetState = sheetState,
+            containerColor = Color(0xFF1E1E1E)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .navigationBarsPadding()
             ) {
                 Text(
                     text = "Comments (${comments.size})",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -503,63 +564,83 @@ fun ShortsScreen(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 280.dp)
+                        .heightIn(max = 300.dp)
                 ) {
-                    items(comments) { comment ->
+                    items(comments, key = { it.id }) { comment ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 6.dp),
+                                .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.Top
                         ) {
-                            AsyncImage(
-                                model = comment.avatarUrl,
-                                contentDescription = comment.author,
-                                contentScale = ContentScale.Crop,
+                            Box(
                                 modifier = Modifier
-                                    .size(28.dp)
+                                    .size(32.dp)
                                     .clip(CircleShape)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
+                                    .background(FlowRed),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = comment.author.firstOrNull()?.toString() ?: "U",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = "${comment.author} • ${comment.timeAgo}",
-                                    fontSize = 11.sp,
-                                    color = Color.Gray
+                                    text = comment.author,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
                                 )
                                 Text(
                                     text = comment.text,
-                                    fontSize = 13.sp
+                                    fontSize = 12.sp,
+                                    color = Color.White.copy(alpha = 0.85f)
                                 )
                             }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
                         value = commentInput,
                         onValueChange = { commentInput = it },
-                        placeholder = { Text("Add a comment...", fontSize = 12.sp) },
+                        placeholder = { Text("Add a comment...", fontSize = 12.sp, color = Color.Gray) },
                         modifier = Modifier.weight(1f),
-                        singleLine = true
+                        singleLine = true,
+                        shape = RoundedCornerShape(20.dp)
                     )
+
                     Spacer(modifier = Modifier.width(8.dp))
-                    Button(
+
+                    IconButton(
                         onClick = {
                             if (commentInput.isNotBlank()) {
-                                onAddComment(currentShort.id, commentInput)
+                                onAddComment(currentShort.id, commentInput.trim())
                                 commentInput = ""
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = FlowRed)
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(FlowRed, CircleShape)
                     ) {
-                        Text("Post")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send Comment",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }

@@ -3,7 +3,6 @@ package com.example.ui.components
 import android.net.Uri
 import android.view.ViewGroup
 import android.widget.Toast
-import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -53,7 +52,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -74,7 +72,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
@@ -84,33 +81,9 @@ import com.example.ui.theme.FlowRed
 import kotlinx.coroutines.delay
 
 /**
- * Resolves a reliable, high-definition streaming media source URL based on the
- * video ID and user-configured quality setting. Prevents any external redirection.
- */
-fun resolveStreamUrlForVideo(videoId: String, quality: String = "1080p"): String {
-    val streamList = listOf(
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WhatCarCanYouGetForAGrand.mp4"
-    )
-
-    val hash = Math.abs(videoId.hashCode())
-    val baseIndex = hash % streamList.size
-    return streamList[baseIndex]
-}
-
-/**
- * Core Native VideoPlayer Composable powered directly by Jetpack Media3 ExoPlayer.
- * Prevents any redirection to external apps and plays videos natively with real-time controls.
+ * Native VideoPlayer Composable bound directly to the shared ExoPlayer engine.
+ * Guarantees zero external app redirects, seamless mini-player continuity, and
+ * uninterrupted background playback when the device is locked.
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -127,6 +100,8 @@ fun VideoPlayerComposable(
     val context = LocalContext.current
     val playerSettings by MediaPlaybackManager.playerSettings.collectAsState()
     val sleepTimerRemainingSeconds by MediaPlaybackManager.sleepTimerRemainingSeconds.collectAsState()
+    val currentPositionMs by MediaPlaybackManager.currentPositionMs.collectAsState()
+    val durationMs by MediaPlaybackManager.durationMs.collectAsState()
 
     var showControls by remember { mutableStateOf(true) }
     var showQualityMenu by remember { mutableStateOf(false) }
@@ -134,99 +109,84 @@ fun VideoPlayerComposable(
         mutableStateOf(if (currentQuality.isNotBlank()) currentQuality else "1080p FHD")
     }
 
-    var isBuffering by remember { mutableStateOf(true) }
-    var currentPositionMs by remember { mutableLongStateOf(0L) }
-    var durationMs by remember { mutableLongStateOf(38 * 60 * 1000L) }
+    var isBuffering by remember { mutableStateOf(false) }
     var isUserScrubbing by remember { mutableStateOf(false) }
     var scrubPositionFraction by remember { mutableFloatStateOf(0f) }
 
-    // Initialize Native ExoPlayer
+    // Bind to the shared singleton ExoPlayer instance
     val exoPlayer = remember(context) {
-        ExoPlayer.Builder(context).build().apply {
-            repeatMode = Player.REPEAT_MODE_ALL
-            playWhenReady = isPlaying
-        }
+        MediaPlaybackManager.getSharedExoPlayer(context)
     }
 
-    // Attach ExoPlayer Event Listener
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = (playbackState == Player.STATE_BUFFERING)
-                if (playbackState == Player.STATE_READY) {
-                    val total = exoPlayer.duration
-                    if (total > 0L) {
-                        durationMs = total
-                    }
-                }
             }
-
-            override fun onIsPlayingChanged(playing: Boolean) {
-                if (playing != isPlaying) {
-                    // Update external state if needed
-                }
-            }
-
             override fun onPlayerError(error: PlaybackException) {
                 isBuffering = false
             }
         }
         exoPlayer.addListener(listener)
-
         onDispose {
             exoPlayer.removeListener(listener)
-            exoPlayer.release()
+            // Note: Do not release the shared ExoPlayer here!
+            // Keeping it alive ensures continuous background playback and smooth mini-player operation.
         }
     }
 
-    // Set MediaItem when video ID or Quality changes
+    var seekFeedbackText by remember { mutableStateOf<String?>(null) }
+    var seekFeedbackSide by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(seekFeedbackText) {
+        if (seekFeedbackText != null) {
+            delay(750L)
+            seekFeedbackText = null
+            seekFeedbackSide = null
+        }
+    }
+
+    // Direct Stream Binding: Prepare immediately and ensure playWhenReady is applied
     LaunchedEffect(video.id, video.streamUrl, localQuality) {
         val streamUrl = if (video.streamUrl.isNotBlank()) {
             video.streamUrl
         } else {
-            resolveStreamUrlForVideo(video.id, localQuality)
+            MediaPlaybackManager.resolveStreamUrl(video.id, localQuality)
         }
 
-        val previousPos = if (exoPlayer.currentPosition > 0L) exoPlayer.currentPosition else 0L
-        val mediaItem = MediaItem.fromUri(Uri.parse(streamUrl))
-        exoPlayer.setMediaItem(mediaItem)
-        exoPlayer.prepare()
-        if (previousPos > 0L) {
-            exoPlayer.seekTo(previousPos)
+        val needsNewMedia = exoPlayer.currentMediaItem?.mediaId != video.id ||
+                exoPlayer.playbackState == Player.STATE_IDLE ||
+                exoPlayer.playbackState == Player.STATE_ENDED
+
+        if (needsNewMedia) {
+            val mediaItem = MediaItem.Builder()
+                .setUri(Uri.parse(streamUrl))
+                .setMediaId(video.id)
+                .build()
+            exoPlayer.setMediaItem(mediaItem)
+            exoPlayer.prepare()
         }
+
+        exoPlayer.playWhenReady = isPlaying
         if (isPlaying) {
             exoPlayer.play()
         }
     }
 
-    // Synchronize play/pause with ExoPlayer
+    // Instant play/pause synchronization
     LaunchedEffect(isPlaying) {
+        exoPlayer.playWhenReady = isPlaying
         if (isPlaying) {
+            if (exoPlayer.playbackState == Player.STATE_IDLE || exoPlayer.playbackState == Player.STATE_ENDED) {
+                exoPlayer.prepare()
+            }
             exoPlayer.play()
         } else {
             exoPlayer.pause()
         }
     }
 
-    // Real-time progress ticker syncing with MediaPlaybackManager & Background Service
-    LaunchedEffect(exoPlayer, isPlaying) {
-        while (true) {
-            if (exoPlayer.isPlaying && !isUserScrubbing) {
-                val pos = exoPlayer.currentPosition
-                val dur = if (exoPlayer.duration > 0) exoPlayer.duration else durationMs
-                currentPositionMs = pos
-                durationMs = dur
-                MediaPlaybackManager.updatePlaybackState(
-                    isPlaying = true,
-                    positionMs = pos,
-                    durationMs = dur
-                )
-            }
-            delay(500L)
-        }
-    }
-
-    // Auto-hide controls timer
+    // Auto-hide controls
     LaunchedEffect(showControls, isPlaying) {
         if (showControls && isPlaying) {
             delay(4500L)
@@ -241,31 +201,54 @@ fun VideoPlayerComposable(
         else -> "HD"
     }
 
+    val tapModifier = Modifier.pointerInput(playerSettings.doubleTapSeekSeconds) {
+        detectTapGestures(
+            onTap = {
+                showControls = !showControls
+            },
+            onDoubleTap = { offset ->
+                val seekSec = playerSettings.doubleTapSeekSeconds
+                if (offset.x < size.width / 2) {
+                    val targetMs = (exoPlayer.currentPosition - seekSec * 1000L).coerceAtLeast(0L)
+                    MediaPlaybackManager.seekTo(targetMs)
+                    seekFeedbackText = "-${seekSec}s"
+                    seekFeedbackSide = "left"
+                } else {
+                    val targetMs = (exoPlayer.currentPosition + seekSec * 1000L).coerceAtMost(durationMs)
+                    MediaPlaybackManager.seekTo(targetMs)
+                    seekFeedbackText = "+${seekSec}s"
+                    seekFeedbackSide = "right"
+                }
+            }
+        )
+    }
+
     val boxModifier = if (isFullscreen) {
         modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { showControls = !showControls })
-            }
+            .then(tapModifier)
     } else {
         modifier
             .fillMaxWidth()
             .aspectRatio(16f / 9f)
             .background(Color.Black)
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { showControls = !showControls })
-            }
+            .then(tapModifier)
     }
 
     Box(modifier = boxModifier) {
-        // 1. Native Media3 PlayerView (Renders video frames natively without external app redirects)
+        // Native Media3 PlayerView (Reattaches instantly to shared ExoPlayer)
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     player = exoPlayer
                     useController = false
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    keepScreenOn = isPlaying
+                    resizeMode = if (playerSettings.zoomToFill) {
+                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    } else {
+                        AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    }
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
@@ -273,12 +256,54 @@ fun VideoPlayerComposable(
                 }
             },
             update = { playerView ->
-                playerView.player = exoPlayer
+                if (playerView.player != exoPlayer) {
+                    playerView.player = exoPlayer
+                }
+                playerView.keepScreenOn = isPlaying
+                playerView.resizeMode = if (playerSettings.zoomToFill) {
+                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                } else {
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+                }
             },
             modifier = Modifier.fillMaxSize()
         )
 
-        // 2. Buffering Indicator
+        // YouTube-Style Double-Tap Seek Feedback Overlay
+        if (seekFeedbackText != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp),
+                contentAlignment = if (seekFeedbackSide == "left") Alignment.CenterStart else Alignment.CenterEnd
+            ) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.7f),
+                    shape = CircleShape
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (seekFeedbackSide == "left") Icons.Default.Replay10 else Icons.Default.Forward10,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = seekFeedbackText ?: "",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        // Buffering Indicator
         if (isBuffering) {
             Box(
                 modifier = Modifier
@@ -294,7 +319,7 @@ fun VideoPlayerComposable(
             }
         }
 
-        // 3. Touch Overlay Scrim
+        // Touch Scrim Overlay
         AnimatedVisibility(
             visible = showControls || !isPlaying,
             enter = fadeIn(),
@@ -308,7 +333,7 @@ fun VideoPlayerComposable(
             )
         }
 
-        // 4. Top Overlay Bar (Quality badge, Sleep Timer, SponsorBlock, Fullscreen toggle)
+        // Top Controls: Quality, SponsorBlock, Sleep Timer, Fullscreen
         AnimatedVisibility(
             visible = showControls || !isPlaying,
             enter = fadeIn(),
@@ -321,7 +346,6 @@ fun VideoPlayerComposable(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // SponsorBlock button
                 if (playerSettings.showSponsorBlockButton) {
                     IconButton(
                         onClick = {
@@ -340,7 +364,6 @@ fun VideoPlayerComposable(
                     }
                 }
 
-                // Sleep Timer button
                 if (playerSettings.showSleepTimerButton) {
                     IconButton(
                         onClick = {
@@ -368,7 +391,6 @@ fun VideoPlayerComposable(
                     }
                 }
 
-                // Cast button
                 if (playerSettings.showCastButton) {
                     IconButton(
                         onClick = {
@@ -457,7 +479,7 @@ fun VideoPlayerComposable(
             }
         }
 
-        // 5. Centered Playback Controls (Replay, Play/Pause, Forward, Prev, Next)
+        // Center Playback Controls (10s Rewind, Play/Pause, 10s Forward, Prev, Next)
         AnimatedVisibility(
             visible = showControls || !isPlaying,
             enter = fadeIn(),
@@ -468,7 +490,6 @@ fun VideoPlayerComposable(
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Previous button
                 if (playerSettings.showPrevNextButtons) {
                     IconButton(
                         onClick = { MediaPlaybackManager.skipPrevious(context) },
@@ -483,13 +504,11 @@ fun VideoPlayerComposable(
                     }
                 }
 
-                // Seek 10s Rewind
                 IconButton(
                     onClick = {
                         val seekSec = playerSettings.doubleTapSeekSeconds
                         val targetMs = (exoPlayer.currentPosition - seekSec * 1000L).coerceAtLeast(0L)
-                        exoPlayer.seekTo(targetMs)
-                        currentPositionMs = targetMs
+                        MediaPlaybackManager.seekTo(targetMs)
                     },
                     modifier = Modifier.size(48.dp)
                 ) {
@@ -501,7 +520,6 @@ fun VideoPlayerComposable(
                     )
                 }
 
-                // Main Play / Pause Button
                 IconButton(
                     onClick = onTogglePlay,
                     modifier = Modifier
@@ -517,13 +535,11 @@ fun VideoPlayerComposable(
                     )
                 }
 
-                // Seek 10s Forward
                 IconButton(
                     onClick = {
                         val seekSec = playerSettings.doubleTapSeekSeconds
                         val targetMs = (exoPlayer.currentPosition + seekSec * 1000L).coerceAtMost(durationMs)
-                        exoPlayer.seekTo(targetMs)
-                        currentPositionMs = targetMs
+                        MediaPlaybackManager.seekTo(targetMs)
                     },
                     modifier = Modifier.size(48.dp)
                 ) {
@@ -535,7 +551,6 @@ fun VideoPlayerComposable(
                     )
                 }
 
-                // Next button
                 if (playerSettings.showPrevNextButtons) {
                     IconButton(
                         onClick = { MediaPlaybackManager.skipNext(context) },
@@ -552,7 +567,7 @@ fun VideoPlayerComposable(
             }
         }
 
-        // 6. Bottom Progress Scrub Bar & Time Displays
+        // Bottom Progress Bar & Time Displays
         AnimatedVisibility(
             visible = showControls || !isPlaying,
             enter = fadeIn(),
@@ -566,7 +581,6 @@ fun VideoPlayerComposable(
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
-                // Time elapsed vs Total duration
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -604,7 +618,6 @@ fun VideoPlayerComposable(
                     }
                 }
 
-                // Interactive Scrubber Slider
                 val currentFraction = if (durationMs > 0L) {
                     (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
                 } else 0f
@@ -617,8 +630,7 @@ fun VideoPlayerComposable(
                     },
                     onValueChangeFinished = {
                         val targetMs = (scrubPositionFraction * durationMs).toLong()
-                        exoPlayer.seekTo(targetMs)
-                        currentPositionMs = targetMs
+                        MediaPlaybackManager.seekTo(targetMs)
                         isUserScrubbing = false
                     },
                     colors = SliderDefaults.colors(
@@ -635,10 +647,6 @@ fun VideoPlayerComposable(
     }
 }
 
-/**
- * Compatible alias for VideoPlayerComposable, ensuring backward compatibility
- * across all existing screens and view models.
- */
 @Composable
 fun VideoPlayerView(
     video: VideoItem,
@@ -664,6 +672,8 @@ fun VideoPlayerView(
 
 /**
  * Persistent Picture-in-Picture / Floating Bottom Mini-Player
+ * Directly bound to the active video and shared ExoPlayer instance to guarantee
+ * 100% media ID, stream URL, and playback state consistency.
  */
 @Composable
 fun MiniPlayer(
@@ -674,23 +684,36 @@ fun MiniPlayer(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val currentPositionMs by MediaPlaybackManager.currentPositionMs.collectAsState()
+    val durationMs by MediaPlaybackManager.durationMs.collectAsState()
+    val progressFraction = if (durationMs > 0L) {
+        (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(68.dp)
             .clickable { onExpand() }
             .testTag("mini_player"),
         color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 6.dp
+        tonalElevation = 8.dp
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Top red accent progress line
+            // Scrub/progress indicator on top of mini-player
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(2.dp)
-                    .background(FlowRed)
-            )
+                    .background(Color.White.copy(alpha = 0.2f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fraction = progressFraction)
+                        .height(2.dp)
+                        .background(FlowRed)
+                )
+            }
 
             Row(
                 modifier = Modifier
@@ -698,15 +721,20 @@ fun MiniPlayer(
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Mini Thumbnail
-                AsyncImage(
-                    model = video.thumbnailUrl,
-                    contentDescription = video.title,
-                    contentScale = ContentScale.Crop,
+                // Video thumbnail
+                Box(
                     modifier = Modifier
-                        .size(width = 72.dp, height = 48.dp)
+                        .size(width = 76.dp, height = 48.dp)
                         .clip(RoundedCornerShape(6.dp))
-                )
+                        .background(Color.Black)
+                ) {
+                    AsyncImage(
+                        model = video.thumbnailUrl,
+                        contentDescription = video.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
 
                 Spacer(modifier = Modifier.width(10.dp))
 
@@ -716,16 +744,18 @@ fun MiniPlayer(
                 ) {
                     Text(
                         text = video.title,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = video.channelTitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 

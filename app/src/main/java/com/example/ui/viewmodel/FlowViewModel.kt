@@ -89,6 +89,14 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
 
         // Sync playback state with MediaPlaybackManager
         viewModelScope.launch {
+            MediaPlaybackManager.currentVideo.collect { video ->
+                if (video != null && _uiState.value.activeVideo?.id != video.id) {
+                    _uiState.value = _uiState.value.copy(activeVideo = video)
+                }
+            }
+        }
+
+        viewModelScope.launch {
             MediaPlaybackManager.isPlaying.collect { playing ->
                 if (_uiState.value.isPlaying != playing) {
                     _uiState.value = _uiState.value.copy(isPlaying = playing)
@@ -306,12 +314,9 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectTab(tab: String) {
         _uiState.value = _uiState.value.copy(activeTab = tab)
-        if (tab == "Shorts" && _uiState.value.shorts.isNotEmpty()) {
-            val short = _uiState.value.shorts[_uiState.value.currentShortIndex]
-            _uiState.value = _uiState.value.copy(
-                activeVideo = short,
-                isPlaying = true
-            )
+        if (tab == "Shorts") {
+            // Pause main video playback so it doesn't conflict with Shorts playback
+            MediaPlaybackManager.pause(getApplication())
         }
     }
 
@@ -364,6 +369,9 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
             activeVideo = video,
             isPlaying = true,
             isPlayerExpanded = expanded,
+            isSearchOpen = false,
+            isSettingsOpen = false,
+            isNotificationsOpen = false,
             videoComments = currentComments
         )
 
@@ -383,13 +391,9 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
 
     fun togglePlayPause(video: VideoItem? = null) {
         val target = video ?: _uiState.value.activeVideo
-        val isDifferent = target != null && _uiState.value.activeVideo?.id != target.id
-        val nextPlaying = if (isDifferent) true else !_uiState.value.isPlaying
-        _uiState.value = _uiState.value.copy(
-            activeVideo = target ?: _uiState.value.activeVideo,
-            isPlaying = nextPlaying
-        )
-        MediaPlaybackManager.togglePlayPause(getApplication(), target)
+        if (target != null) {
+            MediaPlaybackManager.togglePlayPause(getApplication(), target)
+        }
     }
 
     fun collapsePlayer() {
@@ -413,13 +417,7 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
         val total = _uiState.value.shorts.size
         if (total > 0) {
             val nextIdx = (_uiState.value.currentShortIndex + 1) % total
-            val nextShort = _uiState.value.shorts[nextIdx]
-            _uiState.value = _uiState.value.copy(
-                currentShortIndex = nextIdx,
-                activeVideo = nextShort,
-                isPlaying = true
-            )
-            MediaPlaybackManager.startPlayback(getApplication(), nextShort, isPlaying = true, playlist = _uiState.value.shorts)
+            _uiState.value = _uiState.value.copy(currentShortIndex = nextIdx)
         }
     }
 
@@ -427,13 +425,7 @@ class FlowViewModel(application: Application) : AndroidViewModel(application) {
         val total = _uiState.value.shorts.size
         if (total > 0) {
             val prevIdx = if (_uiState.value.currentShortIndex - 1 < 0) total - 1 else _uiState.value.currentShortIndex - 1
-            val prevShort = _uiState.value.shorts[prevIdx]
-            _uiState.value = _uiState.value.copy(
-                currentShortIndex = prevIdx,
-                activeVideo = prevShort,
-                isPlaying = true
-            )
-            MediaPlaybackManager.startPlayback(getApplication(), prevShort, isPlaying = true, playlist = _uiState.value.shorts)
+            _uiState.value = _uiState.value.copy(currentShortIndex = prevIdx)
         }
     }
 
